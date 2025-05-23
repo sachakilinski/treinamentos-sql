@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Otimização de Queries: Desafio 4 - (PostgreSQL)</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 20px;
+            background-color: #f4f7f6;
+            color: #333;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        h1, h2 {
+            color: #0056b3;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 10px;
+            margin-top: 30px;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        pre {
+            background-color: #e8f0f7;
+            border: 1px solid #cce0f0;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9em;
+            color: #36454F;
+        }
+        code {
+            font-family: 'Consolas', 'Monaco', monospace;
+            background-color: #f0f0f0;
+            padding: 2px 5px;
+            border-radius: 4px;
+        }
+        .section {
+            margin-bottom: 25px;
+        }
+        textarea {
+            width: 100%;
+            height: 150px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.95em;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+        button {
+            display: block;
+            width: 200px;
+            padding: 12px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            margin: 20px auto 0 auto;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .feedback {
+            margin-top: 30px;
+            padding: 20px;
+            border-radius: 8px;
+            display: none;
+        }
+        .feedback.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .feedback.failure {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .feedback h3 {
+            margin-top: 0;
+            color: #0056b3;
+        }
+        .metric {
+            margin-bottom: 5px;
+        }
+        .highlight {
+            font-weight: bold;
+            color: #0056b3;
+        }
+        /* Style for the details/summary elements */
+        details {
+            background-color: #f0f0f0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+        summary {
+            padding: 10px 15px;
+            cursor: pointer;
+            font-weight: bold;
+            color: #0056b3;
+            list-style: inside;
+        }
+        details > div {
+            padding: 10px 15px 15px 15px;
+            border-top: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Otimização de Queries: Desafio 4  (PostgreSQL)</h1>
+
+    <div class="section">
+        <h2>Modelo de Dados:</h2>
+        <p>Você gerencia uma grande tabela de produtos em um sistema de e-commerce. A coluna `descricao_longa` contém descrições detalhadas de texto livre para cada produto.</p>
+        <pre><code>CREATE TABLE produtos (
+    produto_id SERIAL PRIMARY KEY,
+    nome_produto VARCHAR(255) NOT NULL,
+    categoria VARCHAR(100),
+    preco DECIMAL(10, 2),
+    descricao_curta VARCHAR(500),
+    descricao_longa TEXT, -- Pode conter strings muito grandes
+    -- ... outras colunas
+);</code></pre>
+        <p><strong>Observações Importantes:</strong></p>
+        <ul>
+            <li>A tabela <code>produtos</code> tem <strong>milhões de registros</strong>.</li>
+            <li>Não há índices específicos para pesquisa de texto em `descricao_longa`.</li>
+        </ul>
+    </div>
+
+    <div class="section">
+        <h2>Query Problemática:</h2>
+        <p>A equipe de marketing precisa encontrar produtos cuja descrição longa contenha termos específicos, independentemente da posição do termo na descrição. A query atual está extremamente lenta.</p>
+        <pre><code>SELECT
+    produto_id,
+    nome_produto,
+    descricao_curta
+FROM
+    produtos
+WHERE
+    descricao_longa ILIKE '%melhoria de performance%';
+</code></pre>
+    </div>
+
+    <div class="section">
+        <h2>Análise de Performance Original (Simulada - PostgreSQL):</h2>
+        <p class="metric"><strong>Tempo de Execução Estimado:</strong> <span class="highlight">48 segundos</span></p>
+        <p class="metric"><strong>Recursos Consumidos (I/O Disk):</strong> <span class="highlight">20 GB lidos</span></p>
+        <p class="metric"><strong>Uso de CPU:</strong> <span class="highlight">Extremamente Alto</span></p>
+
+        <details>
+            <summary>Visualizar Saída do EXPLAIN ANALYZE (Simulada)</summary>
+            <div>
+                    <pre><code>
+                                            QUERY PLAN
+--------------------------------------------------------------------------------------------------
+ Seq Scan on produtos  (cost=0.00..850000.00 rows=100 width=120) (actual time=0.080..47900.500 rows=50 loops=1)
+   Filter: (descricao_longa ~~* '%melhoria de performance%'::text)
+   Rows Removed by Filter: 5000000
+   Buffers: shared hit=1000000 read=2000000
+   Planning Time: 0.123 ms
+   Execution Time: 47900.789 ms
+(6 rows)
+                    </code></pre>
+            </div>
+        </details>
+
+        <details>
+            <summary>Visualizar Descrição do Plano (Interpretação do EXPLAIN ANALYZE)</summary>
+            <div>
+                <p>O <code>EXPLAIN ANALYZE</code> claramente indica um **<code>Seq Scan on produtos</code>**. Isso significa que o PostgreSQL está varrendo a tabela `produtos` inteira (milhões de registros) para cada execução da query. O operador <code>~~*</code> é o `ILIKE` (case-insensitive `LIKE`).</p>
+                <p>O wildcard inicial (`%`) na cláusula `ILIKE '%termo%'` impede que um índice B-tree tradicional na coluna `descricao_longa` seja utilizado. O PostgreSQL precisa ler cada linha da tabela e aplicar a comparação de padrão na descrição completa, o que é computacionalmente muito intensivo para grandes volumes de texto e dados.</p>
+                <p>O alto tempo de execução e o alto consumo de I/O e CPU são diretamente atribuíveis a este `Seq Scan` não otimizado para pesquisa de texto livre.</p>
+            </div>
+        </details>
+    </div>
+
+    <div class="section">
+        <h2>Sua Missão:</h2>
+        <p>Analise a query, o modelo de dados e a saída do <code>EXPLAIN ANALYZE</code>. Identifique o(s) problema(s) de performance causado(s) pela pesquisa de texto livre e o(s) gargalo(s) principal(is). Proponha uma ou mais instruções SQL que otimizem drasticamente a performance desta query.</p>
+    </div>
+
+    <div class="section">
+        <h3>Caixa de Texto para Solução:</h3>
+        <textarea id="solutionInput" placeholder="-- Insira sua solução SQL aqui (pode ser uma query otimizada, criação de índices especiais, etc.)"></textarea>
+        <button id="submitButton">Submeter Melhoria</button>
+    </div>
+
+    <div id="feedback" class="feedback">
+    </div>
+
+    <details class="section">
+        <summary>Visualizar Solução Sugerida (Desafio 4)</summary>
+        <div>
+            <h3>Solução de Índice (Full-Text Search):</h3>
+            <pre><code>-- 1. Adicionar uma coluna de tsvector para otimização de busca
+ALTER TABLE produtos ADD COLUMN descricao_fts TSVECTOR;
+
+-- 2. Criar um índice GIN na nova coluna para pesquisa eficiente
+CREATE INDEX idx_produtos_descricao_fts ON produtos USING GIN (descricao_fts);
+
+-- 3. Criar um trigger para manter 'descricao_fts' atualizada automaticamente
+--    (Para um treinamento, você pode simplificar e apenas mencionar a necessidade)
+--    Exemplo simples (requer configurar o dicionário apropriado):
+-- CREATE FUNCTION update_descricao_fts_trigger() RETURNS TRIGGER AS $$
+-- BEGIN
+--   NEW.descricao_fts := to_tsvector('portuguese', NEW.descricao_longa);
+--   RETURN NEW;
+-- END
+-- $$ LANGUAGE plpgsql;
+-- CREATE TRIGGER trg_produtos_descricao_fts
+-- BEFORE INSERT OR UPDATE ON produtos
+-- FOR EACH ROW EXECUTE FUNCTION update_descricao_fts_trigger();
+
+-- 4. Popular a coluna para dados existentes (após criar a coluna e o trigger/função)
+UPDATE produtos SET descricao_fts = to_tsvector('portuguese', descricao_longa);
+</code></pre>
+            <h3>Query Otimizada:</h3>
+            <pre><code>SELECT
+    produto_id,
+    nome_produto,
+    descricao_curta
+FROM
+    produtos
+WHERE
+    descricao_fts @@ to_tsquery('portuguese', 'melhoria & performance');
+-- Ou para múltiplas palavras OR:
+-- WHERE descricao_fts @@ to_tsquery('portuguese', 'melhoria | performance');
+</code></pre>
+            <h4>Explicação da Solução:</h4>
+            <p>O problema era a ineficiência do `ILIKE '%termo%'` com wildcard inicial, que força um `Seq Scan`. Para pesquisa de texto livre em grandes volumes de dados no PostgreSQL, a solução ideal é usar as funcionalidades de **Full-Text Search (FTS)**.</p>
+            <p>A solução envolve os seguintes passos:</p>
+            <ul>
+                <li><strong>`TSVECTOR` e `to_tsvector()`:</strong> Cria-se uma nova coluna do tipo `TSVECTOR` (um tipo de dado otimizado para FTS). A função `to_tsvector()` converte o texto da `descricao_longa` em um `tsvector`, que é uma representação processada e otimizada para busca (normaliza palavras, remove stopwords, etc.). É importante especificar o dicionário de idiomas (`'portuguese'`) para um tratamento correto.</li>
+                <li><strong>Índice `GIN`:</strong> Um índice `GIN` (Generalized Inverted Index) é criado na coluna `TSVECTOR`. Índices `GIN` são altamente eficientes para pesquisar por ocorrências de termos em valores de texto (como em FTS). Eles permitem que o PostgreSQL localize rapidamente as linhas que contêm os termos da busca, evitando o `Seq Scan`.</li>
+                <li><strong>Manutenção Automática (Trigger):</strong> Para garantir que a coluna `descricao_fts` esteja sempre atualizada quando `descricao_longa` é inserida ou modificada, um `TRIGGER` (com uma função PL/pgSQL) deve ser configurado.</li>
+                <li><strong>`to_tsquery()` e operador `@@`:</strong> A query é modificada para usar `to_tsquery()` para converter o termo de busca em um `tsquery` (formato de busca otimizado) e o operador `@@` para performar a busca de FTS usando o índice `GIN`. Note que o `&` é para "AND" e `|` para "OR" entre os termos.</li>
+            </ul>
+            <p>Esta abordagem permite que o PostgreSQL utilize o índice `GIN` de forma extremamente eficiente, transformando a pesquisa de texto livre de um `Seq Scan` caro em um `Index Scan` rápido e performático.</p>
+        </div>
+    </details>
+</div>
+
+<script>
+    document.getElementById('submitButton').addEventListener('click', function() {
+        const solution = document.getElementById('solutionInput').value.trim();
+        const feedbackDiv = document.getElementById('feedback');
+        let feedbackHtml = '';
+        let isSuccess = false;
+
+        const submittedSolutionCleaned = solution.toLowerCase().replace(/\s+/g, ' ').trim();
+
+        // Check for key elements of a Full-Text Search solution
+        const hasTsvector = submittedSolutionCleaned.includes("tsvector") || submittedSolutionCleaned.includes("to_tsvector");
+        const hasGinIndex = submittedSolutionCleaned.includes("create index") && submittedSolutionCleaned.includes("using gin");
+        const hasTsqueryOp = submittedSolutionCleaned.includes("to_tsquery") && submittedSolutionCleaned.includes("@@");
+        const hasLanguage = submittedSolutionCleaned.includes("'portuguese'") || submittedSolutionCleaned.includes("'english'"); // Or another language
+
+        // This challenge is a bit more complex, so we check for the combination of steps
+        // A perfect solution would have all, but we can accept partial for feedback.
+        // For 'success', we'll require the core index and query transformation.
+        if (hasTsvector && hasGinIndex && hasTsqueryOp && hasLanguage) {
+            isSuccess = true;
+            const optimizedExplain = `
+                                        QUERY PLAN
+--------------------------------------------------------------------------------------------------
+Bitmap Heap Scan on produtos  (cost=12.50..80.70 rows=50 width=120) (actual time=0.800..2.500 rows=50 loops=1)
+Recheck Cond: (descricao_fts @@ to_tsquery('portuguese'::regconfig, 'melhoria & performance'::text))
+Buffers: shared hit=20
+->  Bitmap Index Scan on idx_produtos_descricao_fts  (cost=0.00..12.45 rows=50 width=0) (actual time=0.500..0.550 loops=1)
+     Index Cond: (descricao_fts @@ to_tsquery('portuguese'::regconfig, 'melhoria & performance'::text))
+     Buffers: shared hit=5
+(7 rows)
+            `;
+            const optimizedPlanDescription = `Você identificou e resolveu o problema do \`ILIKE '%termo%'\` ineficiente! O <code>EXPLAIN ANALYZE</code> original mostrava um caro <code>Seq Scan</code>.
+
+Sua solução de utilizar as funcionalidades de **Full-Text Search (FTS) do PostgreSQL** é a abordagem correta.
+<ul>
+<li>A criação de uma coluna <code>TSVECTOR</code> e seu preenchimento via \`to_tsvector()\` pré-processa o texto para buscas.</li>
+<li>O **índice \`GIN\`** na coluna \`TSVECTOR\` permite que o PostgreSQL localize eficientemente os produtos que contêm os termos de busca, transformando o \`Seq Scan\` em um rápido \`Bitmap Index Scan\`.</li>
+<li>A query otimizada usando \`to_tsquery()\` e o operador \`@@\` garante que o índice \`GIN\` seja utilizado de forma eficiente.</li>
+</ul>
+Esta abordagem é fundamental para pesquisas de texto livre escaláveis no PostgreSQL, resultando em uma melhoria drástica no tempo de execução e consumo de recursos.`;
+
+            feedbackHtml = `
+                <h3>🎉 SUCESSO! 🎉</h3>
+                <p><strong>Análise da Sua Solução:</strong></p>
+                <p class="metric"><strong>Tempo de Execução Estimado (APÓS SUA OTIMIZAÇÃO):</strong> <span class="highlight">0.05 segundos</span> (redução de 99.9%)</p>
+                <p class="metric"><strong>Recursos Consumidos (I/O Disk):</strong> <span class="highlight">Alguns KB lidos</span> (redução de 99.9%)</p>
+                <p class="metric"><strong>Uso de CPU:</strong> <span class="highlight">Baixo</span></p>
+
+                <details open>
+                    <summary>Visualizar Saída do EXPLAIN ANALYZE (APÓS SUA OTIMIZAÇÃO - Simulada)</summary>
+                    <div>
+                        <pre><code>${optimizedExplain}</code></pre>
+                    </div>
+                </details>
+
+                <details open>
+                    <summary>Visualizar Descrição do Plano (Interpretação do EXPLAIN ANALYZE)</summary>
+                    <div>
+                        <p>${optimizedPlanDescription}</p>
+                    </div>
+                </details>
+
+                <p><strong>Parabéns!</strong> Você dominou o desafio de otimização de pesquisas de texto livre no PostgreSQL!</p>
+            `;
+            feedbackDiv.className = 'feedback success';
+        } else {
+            feedbackHtml = `
+                <h3>😔 Tente Novamente! 😔</h3>
+                <p>Sua solução ainda não atingiu o nível de otimização esperado ou não está no formato correto para este desafio.</p>
+                <p>Revise a saída do <code>EXPLAIN ANALYZE</code> original. O principal indicador de problema é o <strong><code>Seq Scan on produtos</code></strong>, que significa que o PostgreSQL está lendo a tabela inteira. Isso ocorre porque o wildcard inicial do `ILIKE` impede o uso de índices B-tree normais.</p>
+                <p>Pense em **técnicas e tipos de índice especiais** no PostgreSQL para otimizar pesquisas de texto livre que não dependem de prefixos exatos.</p>
+            `;
+            feedbackDiv.className = 'feedback failure';
+        }
+
+        feedbackDiv.innerHTML = feedbackHtml;
+        feedbackDiv.style.display = 'block';
+        feedbackDiv.scrollIntoView({ behavior: 'smooth' });
+    });
+</script>
+</body>
+</html>

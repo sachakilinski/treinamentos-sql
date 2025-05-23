@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Desafio de Otimização de Queries: Agregações (BigQuery)</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 20px;
+            background-color: #f4f7f6;
+            color: #333;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        h1, h2 {
+            color: #0056b3;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 10px;
+            margin-top: 30px;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        pre {
+            background-color: #e8f0f7;
+            border: 1px solid #cce0f0;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9em;
+            color: #36454F;
+        }
+        code {
+            font-family: 'Consolas', 'Monaco', monospace;
+            background-color: #f0f0f0;
+            padding: 2px 5px;
+            border-radius: 4px;
+        }
+        .section {
+            margin-bottom: 25px;
+        }
+        textarea {
+            width: 100%;
+            height: 150px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.95em;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+        button {
+            display: block;
+            width: 200px;
+            padding: 12px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            margin: 20px auto 0 auto;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .feedback {
+            margin-top: 30px;
+            padding: 20px;
+            border-radius: 8px;
+            display: none;
+        }
+        .feedback.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .feedback.failure {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .feedback h3 {
+            margin-top: 0;
+            color: #0056b3;
+        }
+        .metric {
+            margin-bottom: 5px;
+        }
+        .highlight {
+            font-weight: bold;
+            color: #0056b3;
+        }
+        /* Style for the details/summary elements */
+        details {
+            background-color: #f0f0f0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+        summary {
+            padding: 10px 15px;
+            cursor: pointer;
+            font-weight: bold;
+            color: #0056b3;
+            list-style: inside;
+        }
+        details > div {
+            padding: 10px 15px 15px 15px;
+            border-top: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Desafio de Otimização de Queries: Agregações (BigQuery)</h1>
+
+    <div class="section">
+        <h2>Modelo de Dados:</h2>
+        <p>Você gerencia uma tabela de `eventos_web` que registra interações de usuários em um site.</p>
+        <pre><code>CREATE TABLE `project.dataset.eventos_web` (
+    event_id STRING,
+    user_id STRING,
+    event_timestamp TIMESTAMP,
+    page_url STRING,
+    event_type STRING, -- Ex: 'page_view', 'click', 'form_submit'
+    -- ... outras colunas
+)
+PARTITION BY DATE(event_timestamp)
+CLUSTER BY user_id, event_type;
+</code></pre>
+        <p><strong>Observações Importantes:</strong></p>
+        <ul>
+            <li>A tabela <code>eventos_web</code> tem **bilhões de registros** ao longo de anos.</li>
+            <li>É **particionada por data** (`event_timestamp`) e **clusterizada** por `user_id` e `event_type`.</li>
+            <li>`user_id` possui uma cardinalidade muito alta (milhões de usuários únicos).</li>
+        </ul>
+    </div>
+
+    <div class="section">
+        <h2>Query Problemática:</h2>
+        <p>A equipe de BI precisa de um relatório diário da contagem exata de usuários únicos que visitaram uma página específica (`/produtos/promo`) nos últimos 30 dias. A query atual está muito lenta e cara, consumindo muitos slots.</p>
+        <pre><code>SELECT
+    FORMAT_DATE('%Y-%m-%d', event_timestamp) AS event_date,
+    COUNT(DISTINCT user_id) AS distinct_visitors
+FROM
+    `project.dataset.eventos_web`
+WHERE
+    event_timestamp &gt;= '2024-04-01 00:00:00 UTC' AND event_timestamp &lt; '2024-05-01 00:00:00 UTC'
+    AND page_url = '/produtos/promo'
+GROUP BY
+    event_date
+ORDER BY
+    event_date;
+</code></pre>
+    </div>
+
+    <div class="section">
+        <h2>Análise de Performance Original (Simulada - BigQuery):</h2>
+        <p class="metric"><strong>Tempo de Execução Estimado:</strong> <span class="highlight">70 segundos</span></p>
+        <p class="metric"><strong>Dados Escaneados Estimados:</strong> <span class="highlight">1 TB</span> (após pruning de partições e clustering)</p>
+        <p class="metric"><strong>Custo Estimado (aprox. $):</strong> <span class="highlight">$5.00</span></p>
+
+        <details>
+            <summary>Visualizar Saída do EXPLAIN (Simulada - BigQuery)</summary>
+            <div>
+                    <pre><code>
+Query Stages:
+  Stage 00:
+    Input:
+      Table: `project.dataset.eventos_web`
+      Scan: SHARDED_SCAN
+      Read Bytes: 1,000,000,000,000  -- Reads relevant partitions/clusters
+    Operations:
+      - Filter (WHERE clause: page_url = '/produtos/promo' AND event_timestamp range)
+      - Group By (event_date)
+      - Aggregate (COUNT(DISTINCT user_id)) -- Costly operation
+    Output:
+      Shuffle: Hash
+      Write Bytes: 100 GB
+    Slots Used: 1500
+    Compute Ratio: 0.65
+    Input Rows: 2,000,000,000 (rows in selected partitions/clusters)
+
+Query Stages:
+  Stage 01:
+    Input:
+      Shuffle: Hash (from Stage 00)
+      Read Bytes: 100 GB
+    Operations:
+      - Final Group By
+      - Final Aggregate (COUNT(DISTINCT user_id))
+      - Final Order By (event_date)
+    Output:
+      Table: __result__
+      Write Bytes: 50 MB
+    Slots Used: 300
+    Compute Ratio: 0.9
+    Input Rows: 30 (final result rows)
+                    </code></pre>
+            </div>
+        </details>
+
+        <details>
+            <summary>Visualizar Descrição do Plano (Interpretação do EXPLAIN acima)</summary>
+            <div>
+                <p>A saída do <code>EXPLAIN</code> mostra que o BigQuery está utilizando o particionamento e clustering para reduzir o volume de dados lidos (<code>SHARDED_SCAN</code> com <code>1 TB</code> lido). No entanto, o principal gargalo é a operação **<code>COUNT(DISTINCT user_id)</code>** sobre essa vasta quantidade de dados intermediários (2 bilhões de linhas de entrada para o estágio 00).</p>
+                <p>Contar valores distintos exige que o BigQuery mantenha uma estrutura (como uma hash table) de todos os `user_id`s vistos até o momento, para garantir a unicidade. Quando a cardinalidade de `user_id` é muito alta e o volume de dados é massivo, esta operação se torna extremamente intensiva em computação (uso de slots) e, consequentemente, em tempo de execução, mesmo em uma arquitetura MPP como a do BigQuery.</p>
+                <p>O `Compute Ratio` baixo no estágio 00 (0.65) também sugere que o tempo está sendo dominado por operações de computação intensiva, como a agregação de unicidade.</p>
+            </div>
+        </details>
+    </div>
+
+    <div class="section">
+        <h2>Sua Missão:</h2>
+        <p>Analise a query, o modelo de dados e a saída do <code>EXPLAIN</code>. Identifique o(s) problema(s) de performance e o(s) gargalo(s) principal(is) relacionados à agregação `COUNT(DISTINCT)`. Proponha uma ou mais instruções SQL que otimizem drasticamente a performance desta query no BigQuery.</p>
+    </div>
+
+    <div class="section">
+        <h3>Caixa de Texto para Solução:</h3>
+        <textarea id="solutionInput" placeholder="-- Insira sua solução SQL aqui (pode ser uma query otimizada, uso de funções BigQuery, etc.)"></textarea>
+        <button id="submitButton">Submeter Melhoria</button>
+    </div>
+
+    <div id="feedback" class="feedback">
+    </div>
+
+    <details class="section">
+        <summary>Visualizar Solução Sugerida</summary>
+        <div>
+            <h3>Query Otimizada (Usando Agregação Aproximada):</h3>
+            <pre><code>SELECT
+    FORMAT_DATE('%Y-%m-%d', event_timestamp) AS event_date,
+    APPROX_COUNT_DISTINCT(user_id) AS distinct_visitors_approx
+FROM
+    `project.dataset.eventos_web`
+WHERE
+    event_timestamp &gt;= '2024-04-01 00:00:00 UTC' AND event_timestamp &lt; '2024-05-01 00:00:00 UTC'
+    AND page_url = '/produtos/promo'
+GROUP BY
+    event_date
+ORDER BY
+    event_date;
+</code></pre>
+            <h4>Explicação da Solução:</h4>
+            <p>O principal gargalo é a função **<code>COUNT(DISTINCT user_id)</code>** sobre uma coluna de alta cardinalidade e bilhões de registros, que exige alta alocação de slots e recursos computacionais para garantir a contagem exata de todos os valores únicos.</p>
+            <p>No BigQuery, para cenários onde uma precisão exata não é 100% mandatória (o que é comum para métricas de tendências e dashboards), a solução mais eficiente é usar a função de agregação aproximada **<code>APPROX_COUNT_DISTINCT()</code>**.</p>
+            <ul>
+                <li>**<code>APPROX_COUNT_DISTINCT()</code>:** Esta função utiliza o algoritmo HyperLogLog++ para estimar o número de elementos distintos em um conjunto. Ela oferece uma **precisão muito alta** (geralmente com um erro padrão de 0.01%, ou seja, 99.99% de precisão) e é **drasticamente mais rápida e barata** em termos de slots e memória do que `COUNT(DISTINCT)`. Isso ocorre porque não precisa manter todos os valores únicos em memória para a contagem exata, mas sim uma representação compacta.</li>
+                <li>**Manutenção de Pruning:** A query original já se beneficia do particionamento e clustering para reduzir o volume inicial de dados escaneados. A mudança para `APPROX_COUNT_DISTINCT` otimiza a fase de agregação sobre esse volume já reduzido.</li>
+            </ul>
+            <p>Esta otimização é particularmente útil em data warehouses e sistemas de análise onde o volume de dados é gigantesco e o tempo de resposta e custo são críticos, e uma estimativa precisa é aceitável em vez de uma contagem 100% exata.</p>
+        </div>
+    </details>
+</div>
+
+<script>
+    document.getElementById('submitButton').addEventListener('click', function() {
+        const solution = document.getElementById('solutionInput').value.trim();
+        const feedbackDiv = document.getElementById('feedback');
+        let feedbackHtml = '';
+        let isSuccess = false;
+
+        const submittedSolutionCleaned = solution.toLowerCase().replace(/\s+/g, ' ').trim();
+
+        const hasApproxCountDistinct = submittedSolutionCleaned.includes("approx_count_distinct(user_id)");
+
+        // Still check for original filters to ensure query remains functionally similar
+        const hasCorrectDateRange = submittedSolutionCleaned.includes("event_timestamp >= '2024-04-01 00:00:00 utc'") && submittedSolutionCleaned.includes("event_timestamp < '2024-05-01 00:00:00 utc'");
+        const hasPageUrlFilter = submittedSolutionCleaned.includes("page_url = '/produtos/promo'");
+
+        if (hasApproxCountDistinct && hasCorrectDateRange && hasPageUrlFilter) {
+            isSuccess = true;
+            const optimizedExplain = `
+Query Stages:
+Stage 00:
+Input:
+  Table: \`project.dataset.eventos_web\`
+  Scan: SHARDED_SCAN
+  Read Bytes: 1,000,000,000,000
+Operations:
+  - Filter (WHERE clause: page_url = '/produtos/promo' AND event_timestamp range)
+  - Group By (event_date)
+  - Aggregate (APPROX_COUNT_DISTINCT(user_id)) -- Much less costly
+Output:
+  Shuffle: Hash
+  Write Bytes: 1 GB
+Slots Used: 150
+Compute Ratio: 0.95
+Input Rows: 2,000,000,000 (rows in selected partitions/clusters)
+
+Query Stages:
+Stage 01:
+Input:
+  Shuffle: Hash (from Stage 00)
+  Read Bytes: 1 GB
+Operations:
+  - Final Group By
+  - Final Aggregate (APPROX_COUNT_DISTINCT(user_id))
+  - Final Order By (event_date)
+Output:
+  Table: __result__
+  Write Bytes: 50 MB
+Slots Used: 20
+Compute Ratio: 0.98
+Input Rows: 30 (final result rows)
+            `;
+            const optimizedPlanDescription = `Você identificou e resolveu o gargalo da agregação exata em BigQuery! O <code>EXPLAIN</code> original mostrava alto consumo de slots e tempo para a operação <code>COUNT(DISTINCT)</code>.
+
+Sua solução de usar **<code>APPROX_COUNT_DISTINCT(user_id)</code>** é a abordagem mais eficiente para este cenário.
+<ul>
+<li>Esta função utiliza um algoritmo probabilístico (HyperLogLog++) para estimar o número de valores distintos.</li>
+<li>Ela é **drasticamente mais rápida e consome muito menos recursos (slots)** do que <code>COUNT(DISTINCT)</code>, pois não precisa manter todos os valores únicos em memória.</li>
+<li>A precisão é geralmente muito alta (erro padrão de ~0.01%), o que a torna ideal para dashboards e relatórios onde a precisão absoluta não é um requisito estrito.</li>
+</ul>
+Ao combinar essa função otimizada com o particionamento e clustering já existentes, você transformou uma query cara e lenta em uma operação ágil e de baixo custo.`;
+
+            feedbackHtml = `
+                <h3>🎉 SUCESSO! 🎉</h3>
+                <p><strong>Análise da Sua Solução:</strong></p>
+                <p class="metric"><strong>Tempo de Execução Estimado (APÓS SUA OTIMIZAÇÃO):</strong> <span class="highlight">5 segundos</span> (redução de 92.8%)</p>
+                <p class="metric"><strong>Dados Escaneados Estimados:</strong> <span class="highlight">1 TB</span> (mesmo, mas o custo de processamento muda)</p>
+                <p class="metric"><strong>Custo Estimado (aprox. $):</strong> <span class="highlight">$5.00</span> (custo de escaneamento mantém, mas custo de slots/tempo diminui)</p>
+
+                <details open>
+                    <summary>Visualizar Saída do EXPLAIN (APÓS SUA OTIMIZAÇÃO - Simulada)</summary>
+                    <div>
+                        <pre><code>${optimizedExplain}</code></pre>
+                    </div>
+                </details>
+
+                <details open>
+                    <summary>Visualizar Descrição do Plano (Interpretação do EXPLAIN acima)</summary>
+                    <div>
+                        <p>${optimizedPlanDescription}</p>
+                    </div>
+                </details>
+
+                <p><strong>Parabéns!</strong> Você dominou o desafio de otimização de agregações de alta cardinalidade no BigQuery!</p>
+            `;
+            feedbackDiv.className = 'feedback success';
+        } else {
+            feedbackHtml = `
+                <h3>😔 Tente Novamente! 😔</h3>
+                <p>Sua solução ainda não atingiu o nível de otimização esperado ou não está no formato correto para este desafio.</p>
+                <p>Revise a saída do <code>EXPLAIN</code> original. O principal indicador de problema é o alto consumo de <strong><code>Slots Used</code></strong> e o <strong><code>Compute Ratio</code> baixo</strong>, especialmente no estágio da agregação. Isso aponta para a função <code>COUNT(DISTINCT)</code>.</p>
+                <p>Pense em como o BigQuery lida com a contagem de elementos distintos em volumes massivos de dados. Há uma funcionalidade específica para isso quando a precisão absoluta não é estritamente necessária.</p>
+            `;
+            feedbackDiv.className = 'feedback failure';
+        }
+
+        feedbackDiv.innerHTML = feedbackHtml;
+        feedbackDiv.style.display = 'block';
+        feedbackDiv.scrollIntoView({ behavior: 'smooth' });
+    });
+</script>
+</body>
+</html>

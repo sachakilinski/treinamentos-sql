@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Otimização de Queries: Desafio 2 - Filtrando Vendas por Período e Cliente</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 20px;
+            background-color: #f4f7f6;
+            color: #333;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        h1, h2 {
+            color: #0056b3;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 10px;
+            margin-top: 30px;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        pre {
+            background-color: #e8f0f7;
+            border: 1px solid #cce0f0;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9em;
+            color: #36454F;
+        }
+        code {
+            font-family: 'Consolas', 'Monaco', monospace;
+            background-color: #f0f0f0;
+            padding: 2px 5px;
+            border-radius: 4px;
+        }
+        .section {
+            margin-bottom: 25px;
+        }
+        textarea {
+            width: 100%;
+            height: 150px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.95em;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+        button {
+            display: block;
+            width: 200px;
+            padding: 12px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            margin: 20px auto 0 auto;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .feedback {
+            margin-top: 30px;
+            padding: 20px;
+            border-radius: 8px;
+            display: none;
+        }
+        .feedback.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .feedback.failure {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .feedback h3 {
+            margin-top: 0;
+            color: #0056b3;
+        }
+        .metric {
+            margin-bottom: 5px;
+        }
+        .highlight {
+            font-weight: bold;
+            color: #0056b3;
+        }
+        /* Style for the details/summary elements */
+        details {
+            background-color: #f0f0f0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+        summary {
+            padding: 10px 15px;
+            cursor: pointer;
+            font-weight: bold;
+            color: #0056b3;
+            list-style: inside; /* Puts the disclosure triangle inside */
+        }
+        details > div {
+            padding: 10px 15px 15px 15px;
+            border-top: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Otimização de Queries: Desafio 2 - Filtrando Vendas por Período e Cliente</h1>
+
+    <div class="section">
+        <h2>Modelo de Dados:</h2>
+        <p>Continuamos com a tabela <code>pedidos</code> em um banco de dados PostgreSQL com <strong>milhões de registros</strong>.</p>
+        <pre><code>CREATE TABLE pedidos (
+    pedido_id SERIAL PRIMARY KEY,
+    cliente_id INT NOT NULL,
+    data_pedido TIMESTAMP NOT NULL,
+    status_pedido VARCHAR(50) NOT NULL,
+    valor_total DECIMAL(10, 2) NOT NULL
+    -- ... outras colunas
+);</code></pre>
+        <p><strong>ATENÇÃO:</strong> Existem dois índices já criados na tabela <code>pedidos</code>:</p>
+        <pre><code>CREATE INDEX idx_data_pedido ON pedidos (data_pedido);
+CREATE INDEX idx_cliente_id ON pedidos (cliente_id);</code></pre>
+    </div>
+
+    <div class="section">
+        <h2>Query Problemática:</h2>
+        <p>O time de vendas precisa de um relatório diário que liste todas as vendas realizadas por um cliente específico em um determinado período. Mesmo com índices em <code>data_pedido</code> e <code>cliente_id</code>, a consulta está lenta.</p>
+        <pre><code>SELECT pedido_id, data_pedido, valor_total, status_pedido
+FROM pedidos
+WHERE data_pedido BETWEEN '2024-01-01' AND '2024-01-31'
+  AND cliente_id = 98765
+ORDER BY data_pedido;</code></pre>
+    </div>
+
+    <div class="section">
+        <h2>Análise de Performance Original (Simulada):</h2>
+        <p class="metric"><strong>Tempo de Execução Estimado:</strong> <span class="highlight">2.5 segundos</span></p>
+        <p class="metric"><strong>Recursos Consumidos (I/O Disk):</strong> <span class="highlight">700 MB lidos</span></p>
+
+        <details>
+            <summary>Visualizar Saída do EXPLAIN ANALYZE (Simulada)</summary>
+            <div>
+                    <pre><code>
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ Sort  (cost=125432.25..125480.90 rows=19460 width=40) (actual time=2450.875..2480.123 rows=18543 loops=1)
+   Sort Key: data_pedido
+   Sort Method: external merge Disk: 6400KB
+   ->  Bitmap Heap Scan on pedidos  (cost=6489.12..124567.89 rows=19460 width=40) (actual time=120.345..2390.456 rows=18543 loops=1)
+         Recheck Cond: (data_pedido BETWEEN '2024-01-01 00:00:00'::timestamp AND '2024-01-31 23:59:59'::timestamp)
+         Filter: (cliente_id = 98765)
+         Heap Blocks: lossy=8500
+         ->  Bitmap Index Scan on idx_data_pedido  (cost=0.00..6484.23 rows=256789 width=0) (actual time=10.123..90.876 rows=256789 loops=1)
+               Index Cond: (data_pedido BETWEEN '2024-01-01 00:00:00'::timestamp AND '2024-01-31 23:59:59'::timestamp)
+(9 rows)
+                    </code></pre>
+            </div>
+        </details>
+
+        <details>
+            <summary>Visualizar Descrição do Plano (Interpretação do EXPLAIN ANALYZE)</summary>
+            <div>
+                <p>O PostgreSQL optou por usar o <code>idx_data_pedido</code> para encontrar os pedidos dentro do período de datas. No entanto, este filtro inicial ainda retorna um **grande número de registros** (<code>rows=256789</code> estimados), que então precisam ser lidos do heap (<code>Bitmap Heap Scan</code>) para aplicar o filtro em <code>cliente_id</code>. A parte mais custosa é o <code>Sort</code> final, que indica que o PostgreSQL teve que ordenar uma grande quantidade de dados em disco (<code>Sort Method: external merge Disk: 6400KB</code>) porque o índice usado não cobria a ordenação após a aplicação do segundo filtro.</p>
+            </div>
+        </details>
+    </div>
+
+    <div class="section">
+        <h2>Sua Missão:</h2>
+    </div>
+
+    <div class="section">
+        <h3>Caixa de Texto para Solução:</h3>
+        <textarea id="solutionInput" placeholder="-- Insira sua solução SQL aqui (pode ser um CREATE INDEX, um ajuste na query, etc.)
+-- Pense em como o PostgreSQL pode usar um único índice para as duas condições de WHERE e ORDER BY."></textarea>
+        <button id="submitButton">Submeter Melhoria</button>
+    </div>
+
+    <div id="feedback" class="feedback">
+    </div>
+</div>
+
+<script>
+    document.getElementById('submitButton').addEventListener('click', function() {
+        const solution = document.getElementById('solutionInput').value.trim();
+        const feedbackDiv = document.getElementById('feedback');
+        let feedbackHtml = '';
+        let isSuccess = false;
+
+        const submittedSolutionCleaned = solution.toLowerCase().replace(/\s+/g, ' ').trim();
+
+        const hasCreateIndex = submittedSolutionCleaned.includes("create index");
+        const hasClienteId = submittedSolutionCleaned.includes("cliente_id");
+        const hasDataPedido = submittedSolutionCleaned.includes("data_pedido");
+        const hasDataPedidoAsc = submittedSolutionCleaned.includes("data_pedido asc") || (submittedSolutionCleaned.includes("data_pedido") && !submittedSolutionCleaned.includes("data_pedido desc"));
+
+        const idxCliente = submittedSolutionCleaned.indexOf("cliente_id");
+        const idxData = submittedSolutionCleaned.indexOf("data_pedido");
+
+        // Optimal order for this query, especially if cliente_id is very selective
+        const isOptimalOrder = (idxCliente !== -1 && idxData !== -1 && idxCliente < idxData);
+
+        // Check if it's a compound index with the right columns and, ideally, the right order.
+        const isCompoundIndexCorrect = hasCreateIndex && hasClienteId && hasDataPedido && hasDataPedidoAsc && isOptimalOrder;
+
+
+        if (isCompoundIndexCorrect) {
+            isSuccess = true;
+            const optimizedExplain = `
+                              QUERY PLAN
+-------------------------------------------------------------------------------
+Index Scan using idx_cliente_data_pedido on pedidos  (cost=0.42..8.44 rows=185 width=40) (actual time=0.045..0.068 rows=185 loops=1)
+Index Cond: (cliente_id = 98765 AND data_pedido BETWEEN '2024-01-01 00:00:00'::timestamp AND '2024-01-31 23:59:59'::timestamp)
+(2 rows)
+            `;
+            const optimizedPlanDescription = `<code>Index Scan</code> usando seu novo índice composto <code>(cliente_id, data_pedido)</code> na tabela 'pedidos'. Este índice é ideal porque ele primeiramente filtra de forma muito seletiva pelo <code>cliente_id</code> (condição de igualdade) e, em seguida, navega eficientemente pelo range de <code>data_pedido</code> para aquele cliente. A ordenação final pela <code>data_pedido</code> também é satisfeita diretamente pelo índice, eliminando a operação de <code>Sort</code> custosa.`;
+
+            feedbackHtml = `
+                <h3>🎉 SUCESSO! 🎉</h3>
+                <p><strong>Análise da Sua Solução:</strong></p>
+                <p class="metric"><strong>Tempo de Execução Estimado (APÓS SUA OTIMIZAÇÃO):</strong> <span class="highlight">0.07 segundos</span> (redução de 97.2%)</p>
+                <p class="metric"><strong>Recursos Consumidos (I/O Disk):</strong> <span class="highlight">60 KB lidos</span> (redução de 99.9%)</p>
+
+                <details open> <summary>Visualizar Saída do EXPLAIN ANALYZE (APÓS SUA OTIMIZAÇÃO - Simulada)</summary>
+                    <div>
+                        <pre><code>${optimizedExplain}</code></pre>
+                    </div>
+                </details>
+
+                <details open> <summary>Visualizar Descrição do Plano (Interpretação do EXPLAIN ANALYZE)</summary>
+                    <div>
+                        <p>${optimizedPlanDescription}</p>
+                    </div>
+                </details>
+
+                <p><strong>Explicação Detalhada:</strong></p>
+                <p>Você identificou que, apesar de existirem índices individuais em <code>data_pedido</code> e <code>cliente_id</code>, eles não podiam ser usados de forma eficiente em conjunto para satisfazer ambas as condições do <code>WHERE</code> simultaneamente e o <code>ORDER BY</code>. O <code>EXPLAIN ANALYZE</code> original revelou o <code>Bitmap Heap Scan</code> (buscando muitos dados do disco) e, crucialmente, o <code>Sort Method: external merge Disk</code> (ordenando em disco), ambos indicando um gargalo.</p>
+                <p>Um **índice composto** permite que o otimizador navegue pela árvore do índice usando todas as colunas fornecidas, filtrando o conjunto de dados desde o início e entregando-o já ordenado.</p>
+                <ul>
+                    <li><strong>Índices Individuais vs. Composto:</strong> Índices individuais são ótimos para suas respectivas colunas, mas para queries que combinam filtros em múltiplas colunas, um índice composto cobrindo essas colunas é drasticamente mais eficiente.</li>
+                    <li><strong>Ordem das Colunas no Índice Composto:</strong> Para esta query, um índice como <code>(cliente_id, data_pedido)</code> é o mais eficaz. Se <code>cliente_id</code> é altamente seletivo (ou seja, cada cliente tem um número relativamente pequeno de pedidos comparado ao total), o otimizador pode ir diretamente para a seção do índice daquele cliente, e então percorrer os pedidos dentro do período de datas. Isso satisfaz o `WHERE` e o `ORDER BY` de uma vez.</li>
+                </ul>
+                <p>Parabéns! Você dominou o conceito de índices compostos e a leitura de planos de execução para otimizar queries com múltiplas condições no <code>WHERE</code>!</p>
+            `;
+            feedbackDiv.className = 'feedback success';
+        } else {
+            feedbackHtml = `
+                <h3>😔 Tente Novamente! 😔</h3>
+                <p>Sua solução ainda não atingiu o nível de otimização esperado ou não está no formato correto para este desafio.</p>
+                <p>Revise a saída do <code>EXPLAIN ANALYZE</code>. Observe o <strong><code>Bitmap Heap Scan</code></strong> e, principalmente, o <strong><code>Sort Method: external merge Disk</code></strong>. Esses são os principais sinais de que os índices existentes não estão sendo usados de forma otimizada ou que a query precisa de um índice que cubra múltiplas condições e a ordenação.</p>
+                <p>Dica: Pense em um <strong>índice que cubra ambas as colunas</strong> na cláusula <code>WHERE</code> e a coluna no <code>ORDER BY</code> para que o PostgreSQL possa filtrar de forma mais eficiente desde o início.</p>
+                <p>Lembre-se que a ordem das colunas em um índice composto é importante!</p>
+            `;
+            feedbackDiv.className = 'feedback failure';
+        }
+
+        feedbackDiv.innerHTML = feedbackHtml;
+        feedbackDiv.style.display = 'block';
+        feedbackDiv.scrollIntoView({ behavior: 'smooth' });
+    });
+</script>
+</body>
+</html>

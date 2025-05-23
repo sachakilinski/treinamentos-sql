@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Otimização de Queries: Desafio 1 - Pedidos Pendentes</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 20px;
+            background-color: #f4f7f6;
+            color: #333;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        h1, h2 {
+            color: #0056b3;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 10px;
+            margin-top: 30px;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        pre {
+            background-color: #e8f0f7;
+            border: 1px solid #cce0f0;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9em;
+            color: #36454F;
+        }
+        code {
+            font-family: 'Consolas', 'Monaco', monospace;
+            background-color: #f0f0f0;
+            padding: 2px 5px;
+            border-radius: 4px;
+        }
+        .section {
+            margin-bottom: 25px;
+        }
+        textarea {
+            width: 100%;
+            height: 150px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.95em;
+            resize: vertical;
+            box-sizing: border-box; /* Include padding and border in the element's total width and height */
+        }
+        button {
+            display: block;
+            width: 200px;
+            padding: 12px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            margin: 20px auto 0 auto;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .feedback {
+            margin-top: 30px;
+            padding: 20px;
+            border-radius: 8px;
+            display: none; /* Hidden by default */
+        }
+        .feedback.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .feedback.failure {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .feedback h3 {
+            margin-top: 0;
+            color: #0056b3;
+        }
+        .metric {
+            margin-bottom: 5px;
+        }
+        .highlight {
+            font-weight: bold;
+            color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Otimização de Queries: Desafio 1 - Pedidos Pendentes</h1>
+
+    <div class="section">
+        <h2>Modelo de Dados:</h2>
+        <p>Temos uma tabela <code>pedidos</code> em um banco de dados PostgreSQL com <strong>milhões de registros</strong>.</p>
+        <pre><code>CREATE TABLE pedidos (
+    pedido_id SERIAL PRIMARY KEY,
+    cliente_id INT NOT NULL,
+    data_pedido TIMESTAMP NOT NULL,
+    status_pedido VARCHAR(50) NOT NULL,
+    valor_total DECIMAL(10, 2) NOT NULL
+);</code></pre>
+    </div>
+
+    <div class="section">
+        <h2>Query Problemática:</h2>
+        <p>A equipe de atendimento ao cliente reclama que a busca de pedidos pendentes de um cliente específico está demorando muito.</p>
+        <pre><code>SELECT pedido_id, data_pedido, valor_total
+FROM pedidos
+WHERE cliente_id = 12345
+  AND status_pedido = 'Pendente'
+ORDER BY data_pedido DESC;</code></pre>
+    </div>
+
+    <div class="section">
+        <h2>Análise de Performance Original (Simulada):</h2>
+        <p class="metric"><strong>Tempo de Execução Estimado:</strong> <span class="highlight">4.5 segundos</span></p>
+        <p class="metric"><strong>Recursos Consumidos (I/O Disk):</strong> <span class="highlight">1.2 GB lidos</span></p>
+        <p><strong>Descrição do Plano (Simulado):</strong> <code>Full Table Scan</code> na tabela 'pedidos', seguido por um <code>Filter</code> e um <code>Sort</code> em memória/disco. O otimizador teve que ler a tabela inteira para encontrar os registros correspondentes ao cliente e status, e depois ordenar o resultado.</p>
+    </div>
+
+    <div class="section">
+        <h2>Sua Missão:</h2>
+        <p>Analise a query e o modelo de dados. Proponha uma ou mais instruções SQL que otimizem a performance desta query. O objetivo é reduzir drasticamente o tempo de execução e o consumo de recursos.</p>
+    </div>
+
+    <div class="section">
+        <h3>Caixa de Texto para Solução:</h3>
+        <textarea id="solutionInput" placeholder="-- Insira sua solução SQL aqui (pode ser um CREATE INDEX, um ajuste na query, etc.)
+-- Exemplo: CREATE INDEX idx_exemplo ON tabela(coluna);"></textarea>
+        <button id="submitButton">Submeter Melhoria</button>
+    </div>
+
+    <div id="feedback" class="feedback">
+    </div>
+</div>
+
+<script>
+    document.getElementById('submitButton').addEventListener('click', function() {
+        const solution = document.getElementById('solutionInput').value.trim();
+        const feedbackDiv = document.getElementById('feedback');
+        let feedbackHtml = '';
+        let isSuccess = false;
+
+        // Simple check for the expected index creation.
+        // In a real scenario, this would be a more robust backend analysis.
+        const expectedIndex = "CREATE INDEX idx_cliente_status_data ON pedidos (cliente_id, status_pedido, data_pedido DESC);".toLowerCase().replace(/\s+/g, ' ').trim();
+        const submittedSolutionCleaned = solution.toLowerCase().replace(/\s+/g, ' ').trim();
+
+
+        if (submittedSolutionCleaned.includes("create index") &&
+            (submittedSolutionCleaned.includes("cliente_id") && submittedSolutionCleaned.includes("status_pedido") && submittedSolutionCleaned.includes("data_pedido") && submittedSolutionCleaned.includes("desc"))) {
+            isSuccess = true;
+            feedbackHtml = `
+                <h3>🎉 SUCESSO! 🎉</h3>
+                <p><strong>Análise da Sua Solução:</strong></p>
+                <p class="metric"><strong>Tempo de Execução Estimado (APÓS SUA OTIMIZAÇÃO):</strong> <span class="highlight">0.05 segundos</span> (redução de 98.8%)</p>
+                <p class="metric"><strong>Recursos Consumidos (I/O Disk):</strong> <span class="highlight">48 KB lidos</span> (redução de 99.9%)</p>
+                <p><strong>Descrição do Plano (APÓS SUA OTIMIZAÇÃO):</strong> <code>Index Scan Backward</code> usando <code>idx_cliente_status_data</code> na tabela 'pedidos'. O índice permite que o PostgreSQL vá diretamente aos registros relevantes, já ordenados, eliminando a necessidade de um scan completo da tabela e uma ordenação separada.</p>
+                <p><strong>Explicação Detalhada:</strong></p>
+                <p>Você identificou corretamente que o problema principal era a ausência de um índice adequado para as colunas na cláusula <code>WHERE</code> e <code>ORDER BY</code>.</p>
+                <ul>
+                    <li><strong><code>cliente_id</code> e <code>status_pedido</code>:</strong> Colocá-los primeiro no índice (<code>(cliente_id, status_pedido)</code>) permite que o PostgreSQL filtre rapidamente por essas colunas.</li>
+                    <li><strong><code>data_pedido DESC</code>:</strong> Incluir <code>data_pedido</code> com <code>DESC</code> (descendente) no índice é crucial para otimizar o <code>ORDER BY data_pedido DESC</code>. Isso permite que o PostgreSQL leia os dados do índice já na ordem correta, eliminando a necessidade de uma operação de <code>Sort</code> separada.</li>
+                </ul>
+                <p>Parabéns! Você solucionou o problema de performance e reduziu o tempo de execução em quase 99%!</p>
+            `;
+            feedbackDiv.className = 'feedback success';
+        } else {
+            feedbackHtml = `
+                <h3>😔 Tente Novamente! 😔</h3>
+                <p>Sua solução ainda não atingiu o nível de otimização esperado ou não está no formato correto para este desafio.</p>
+                <p>Dica: Pense em como o PostgreSQL usa índices para acelerar buscas em cláusulas <code>WHERE</code> e <code>ORDER BY</code>. Considere a ordem das colunas no índice e a direção da ordenação.</p>
+                <p>Lembre-se que um índice bem construído pode evitar <code>Full Table Scans</code> e operações de <code>Sort</code> custosas.</p>
+            `;
+            feedbackDiv.className = 'feedback failure';
+        }
+
+        feedbackDiv.innerHTML = feedbackHtml;
+        feedbackDiv.style.display = 'block'; // Show the feedback
+        feedbackDiv.scrollIntoView({ behavior: 'smooth' }); // Scroll to feedback
+    });
+</script>
+</body>
+</html>

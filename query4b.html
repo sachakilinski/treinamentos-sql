@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Otimização de Queries: Desafio 4b - Pesquisa de Texto Livre Lenta (BigQuery)</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 20px;
+            background-color: #f4f7f6;
+            color: #333;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        h1, h2 {
+            color: #0056b3;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 10px;
+            margin-top: 30px;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        pre {
+            background-color: #e8f0f7;
+            border: 1px solid #cce0f0;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9em;
+            color: #36454F;
+        }
+        code {
+            font-family: 'Consolas', 'Monaco', monospace;
+            background-color: #f0f0f0;
+            padding: 2px 5px;
+            border-radius: 4px;
+        }
+        .section {
+            margin-bottom: 25px;
+        }
+        textarea {
+            width: 100%;
+            height: 150px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.95em;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+        button {
+            display: block;
+            width: 200px;
+            padding: 12px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            margin: 20px auto 0 auto;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .feedback {
+            margin-top: 30px;
+            padding: 20px;
+            border-radius: 8px;
+            display: none;
+        }
+        .feedback.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .feedback.failure {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .feedback h3 {
+            margin-top: 0;
+            color: #0056b3;
+        }
+        .metric {
+            margin-bottom: 5px;
+        }
+        .highlight {
+            font-weight: bold;
+            color: #0056b3;
+        }
+        /* Style for the details/summary elements */
+        details {
+            background-color: #f0f0f0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+        summary {
+            padding: 10px 15px;
+            cursor: pointer;
+            font-weight: bold;
+            color: #0056b3;
+            list-style: inside;
+        }
+        details > div {
+            padding: 10px 15px 15px 15px;
+            border-top: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Otimização de Queries: Desafio 4b - Pesquisa de Texto Livre Lenta (BigQuery)</h1>
+
+    <div class="section">
+        <h2>Modelo de Dados:</h2>
+        <p>Você gerencia uma tabela no BigQuery que armazena milhões de logs de erro diários de diversas aplicações. A coluna <code>error_message</code> contém descrições detalhadas dos erros.</p>
+        <pre><code>CREATE TABLE `project.dataset.error_logs` (
+    log_id STRING,
+    event_timestamp TIMESTAMP,
+    application_name STRING,
+    error_level STRING, -- Ex: 'ERROR', 'WARNING', 'INFO'
+    error_message STRING, -- Mensagens de erro de texto livre (podem ser longas)
+    user_id STRING
+    -- ... outras colunas
+)
+PARTITION BY DATE(event_timestamp); -- Tabela particionada por data
+</code></pre>
+    </div>
+
+    <div class="section">
+        <h2>Query Problemática:</h2>
+        <p>A equipe de DevOps precisa encontrar rapidamente logs de erros que contenham frases ou palavras-chave específicas dentro da mensagem de erro, independentemente de onde apareçam na string. A query atual está muito lenta e cara.</p>
+        <pre><code>SELECT
+    log_id,
+    event_timestamp,
+    application_name,
+    error_message
+FROM
+    `project.dataset.error_logs`
+WHERE
+    event_timestamp &gt;= '2024-05-01' AND event_timestamp &lt; '2024-05-02'
+    AND REGEXP_CONTAINS(error_message, r'(?i).*database connection failed.*');
+    -- A flag (?i) ignora maiúsculas/minúsculas
+</code></pre>
+    </div>
+
+    <div class="section">
+        <h2>Análise de Performance Original (Simulada - BigQuery):</h2>
+        <p class="metric"><strong>Tempo de Execução Estimado:</strong> <span class="highlight">35 segundos</span></p>
+        <p class="metric"><strong>Dados Escaneados Estimados:</strong> <span class="highlight">800 GB</span> (mesmo com o filtro de data, o regex full-scan na partição é caro)</p>
+        <p class="metric"><strong>Custo Estimado (aprox. $):</strong> <span class="highlight">$4.00</span></p>
+
+        <details>
+            <summary>Visualizar Saída do EXPLAIN (Simulada - BigQuery)</summary>
+            <div>
+                    <pre><code>
+Query Stages:
+  Stage 00:
+    Input:
+      Table: `project.dataset.error_logs`
+      Scan: SHARDED_SCAN
+      Read Bytes: 800,000,000,000
+    Operations:
+      - Filter (WHERE clause: event_timestamp >= '2024-05-01' AND event_timestamp < '2024-05-02' AND REGEXP_CONTAINS(error_message, r'(?i).*database connection failed.*'))
+    Output:
+      Shuffle: None
+      Write Bytes: 100 MB
+    Slots Used: 800
+    Compute Ratio: 0.7
+    Input Rows: 5,000,000,000 (total scanned for the day)
+
+Query Stages:
+  Stage 01:
+    Input:
+      Shuffle: None (from Stage 00)
+      Read Bytes: 100 MB
+    Operations:
+      - Final Output
+    Output:
+      Table: __result__
+      Write Bytes: 10 MB
+    Slots Used: 50
+    Compute Ratio: 0.95
+    Input Rows: 50 (final result rows)
+                    </code></pre>
+            </div>
+        </details>
+
+        <details>
+            <summary>Visualizar Descrição do Plano (Interpretação do EXPLAIN acima)</summary>
+            <div>
+                <p>A saída do <code>EXPLAIN</code> mostra que, embora o BigQuery consiga fazer a poda de partições pela coluna <code>event_timestamp</code> (indicado pelo <code>SHARDED_SCAN</code> e o volume de <code>Read Bytes</code> ser menor que o total da tabela), a operação de <code>REGEXP_CONTAINS</code> na coluna <code>error_message</code> ainda está causando um **escaneamento completo da coluna de texto dentro da partição selecionada**. Isso é computacionalmente intensivo e caro, pois o BigQuery precisa ler e processar cada string na coluna `error_message` para aplicar a expressão regular.</p>
+                <p>A natureza do padrão `.*termo.*` (com wildcards em ambos os lados) impede qualquer otimização baseada em prefixo ou dicionário, forçando um scan completo das strings na memória, mesmo que o restante da query seja restrito por partições.</p>
+            </div>
+        </details>
+    </div>
+
+    <div class="section">
+        <h2>Sua Missão:</h2>
+        <p>Analise a query, o modelo de dados e a saída do <code>EXPLAIN</code>. Identifique o(s) problema(s) de performance causado(s) pela pesquisa de texto livre e o(s) gargalo(s) principal(is) no contexto do BigQuery. Proponha uma ou mais instruções SQL que otimizem drasticamente a performance desta query, focando nas capacidades de busca de texto do BigQuery.</p>
+    </div>
+
+    <div class="section">
+        <h3>Caixa de Texto para Solução:</h3>
+        <textarea id="solutionInput" placeholder="-- Insira sua solução SQL aqui (pode ser uma nova query, comando de CREATE SEARCH INDEX, etc.)
+-- Pense em como o BigQuery pode otimizar buscas de texto livre de forma eficiente."></textarea>
+        <button id="submitButton">Submeter Melhoria</button>
+    </div>
+
+    <div id="feedback" class="feedback">
+    </div>
+
+    <details class="section">
+        <summary>Visualizar Solução Sugerida (Desafio 4b)</summary>
+        <div>
+            <h3>Solução de Índice (Search Index):</h3>
+            <pre><code>-- 1. Criar um Search Index na coluna error_message
+CREATE SEARCH INDEX `error_message_search_index`
+ON `project.dataset.error_logs`(error_message);
+
+-- A criação do índice leva um tempo dependendo do tamanho da tabela.
+-- Para manutenção, o BigQuery gerencia automaticamente.
+</code></pre>
+            <h3>Query Otimizada:</h3>
+            <pre><code>SELECT
+    log_id,
+    event_timestamp,
+    application_name,
+    error_message
+FROM
+    `project.dataset.error_logs`
+WHERE
+    event_timestamp &gt;= '2024-05-01' AND event_timestamp &lt; '2024-05-02'
+    AND SEARCH(error_message, 'database connection failed');
+-- A função SEARCH() é otimizada para usar Search Indexes.
+-- Ela ignora maiúsculas/minúsculas e pode lidar com múltiplos termos.
+</code></pre>
+            <h4>Explicação da Solução:</h4>
+            <p>O problema principal era a ineficiência do <code>REGEXP_CONTAINS</code> com wildcards em ambos os lados, que força uma varredura completa da coluna de texto dentro de cada partição relevante. Para pesquisas de texto livre em grandes volumes de dados no BigQuery, a solução ideal é usar o recurso de **Search Indexes**.</p>
+            <p>A solução envolve os seguintes passos:</p>
+            <ul>
+                <li><strong><code>CREATE SEARCH INDEX</code>:</strong> Este comando cria um índice de pesquisa especializado na coluna <code>error_message</code>. Diferente de uma varredura de expressão regular, um Search Index é um tipo de índice invertido. Ele permite que o BigQuery localize rapidamente as linhas que contêm os termos de busca sem precisar escanear e processar a coluna textual inteira.</li>
+                <li><strong>Função <code>SEARCH()</code>:</strong> Ao substituir <code>REGEXP_CONTAINS</code> por <code>SEARCH()</code>, você instrui o BigQuery a utilizar o Search Index recém-criado. Esta função é otimizada para trabalhar com os Search Indexes, sendo muito mais eficiente para consultas de texto livre. Ela já lida com a insensibilidade a maiúsculas/minúsculas e a busca de substrings.</li>
+                <li><strong>Otimização Combinada:</strong> O BigQuery agora pode primeiro podar as partições por <code>event_timestamp</code> (o que já estava acontecendo), e então, dentro da partição relevante, usar o **Search Index** para encontrar as mensagens de erro. Isso resulta em um `INDEX_SCAN_ON_SEARCH_INDEX` altamente eficiente, reduzindo drasticamente a quantidade de dados lidos e processados, impactando diretamente o tempo de execução e o custo.</li>
+            </ul>
+            <p>Esta abordagem é a mais eficiente e recomendada para pesquisa de texto livre escalável no BigQuery, transformando uma query lenta e cara em uma operação rápida e de baixo custo.</p>
+        </div>
+    </details>
+</div>
+
+<script>
+    document.getElementById('submitButton').addEventListener('click', function() {
+        const solution = document.getElementById('solutionInput').value.trim();
+        const feedbackDiv = document.getElementById('feedback');
+        let feedbackHtml = '';
+        let isSuccess = false;
+
+        const submittedSolutionCleaned = solution.toLowerCase().replace(/\s+/g, ' ').trim();
+
+        // Check for key elements of a BigQuery Search Index solution
+        const hasCreateIndex = submittedSolutionCleaned.includes("create search index");
+        const hasSearchFunction = submittedSolutionCleaned.includes("search(");
+        const targetsErrorMessage = submittedSolutionCleaned.includes("error_message");
+
+        // For a successful submission, we need both index creation and query change
+        if (hasCreateIndex && hasSearchFunction && targetsErrorMessage) {
+            isSuccess = true;
+            const optimizedExplain = `
+Query Stages:
+Stage 00:
+Input:
+  Table: \`project.dataset.error_logs\`
+  Scan: INDEX_SCAN_ON_SEARCH_INDEX
+  Read Bytes: 5,000,000,000
+Operations:
+  - Filter (WHERE clause: event_timestamp >= '2024-05-01' AND event_timestamp < '2024-05-02' AND SEARCH(error_message, 'database connection failed'))
+Output:
+  Shuffle: None
+  Write Bytes: 50 MB
+Slots Used: 50
+Compute Ratio: 0.98
+Input Rows: 1000 (total rows identified by index)
+
+Query Stages:
+Stage 01:
+Input:
+  Shuffle: None (from Stage 00)
+  Read Bytes: 50 MB
+Operations:
+  - Final Output
+Output:
+  Table: __result__
+  Write Bytes: 10 MB
+Slots Used: 10
+Compute Ratio: 0.99
+Input Rows: 50 (final result rows)
+            `;
+            const optimizedPlanDescription = `Você identificou a solução ideal para pesquisas de texto livre no BigQuery: a utilização de **Search Indexes** e a função \`SEARCH()\` correspondente.
+<ul>
+<li>**\`CREATE SEARCH INDEX\`:** Este comando cria um índice de pesquisa especializado na coluna \`error_message\`. Diferente de uma varredura \`REGEXP_CONTAINS\`, um Search Index é um índice invertido, permitindo que o BigQuery localize rapidamente as linhas que contêm os termos de busca sem precisar escanear a coluna inteira.</li>
+<li>**Função \`SEARCH()\`:** Ao substituir \`REGEXP_CONTAINS\` por \`SEARCH()\`, você instrui o BigQuery a utilizar o Search Index recém-criado. Esta função é otimizada para trabalhar com os Search Indexes.</li>
+<li>**Otimização Combinada:** O BigQuery agora pode primeiro podar as partições por \`event_timestamp\` (como antes), e então, dentro da partição relevante, usar o **Search Index** para encontrar as mensagens de erro, resultando em um \`INDEX_SCAN_ON_SEARCH_INDEX\` altamente eficiente. Isso reduz drasticamente a quantidade de dados lidos e processados, impactando diretamente o tempo de execução e o custo.</li>
+</ul>
+Esta abordagem é a mais eficiente para pesquisa de texto livre escalável no BigQuery, transformando uma query lenta e cara em uma operação rápida e de baixo custo.`;
+
+            feedbackHtml = `
+                <h3>🎉 SUCESSO! 🎉</h3>
+                <p><strong>Análise da Sua Solução:</strong></p>
+                <p class="metric"><strong>Tempo de Execução Estimado (APÓS SUA OTIMIZAÇÃO):</strong> <span class="highlight">2 segundos</span> (redução de 94.3%)</p>
+                <p class="metric"><strong>Dados Escaneados Estimados:</strong> <span class="highlight">5 GB</span> (redução de 99.3%)</p>
+                <p class="metric"><strong>Custo Estimado (aprox. $):</strong> <span class="highlight">$0.025</span> (redução de 99.3%)</p>
+
+                <details open>
+                    <summary>Visualizar Saída do EXPLAIN (APÓS SUA OTIMIZAÇÃO - Simulada)</summary>
+                    <div>
+                        <pre><code>${optimizedExplain}</code></pre>
+                    </div>
+                </details>
+
+                <details open>
+                    <summary>Visualizar Descrição do Plano (Interpretação do EXPLAIN acima)</summary>
+                    <div>
+                        <p>${optimizedPlanDescription}</p>
+                    </div>
+                </details>
+
+                <p><strong>Parabéns!</strong> Você dominou o desafio de otimização de pesquisas de texto livre no BigQuery!</p>
+            `;
+            feedbackDiv.className = 'feedback success';
+        } else {
+            feedbackHtml = `
+                <h3>😔 Tente Novamente! 😔</h3>
+                <p>Sua solução ainda não atingiu o nível de otimização esperado ou não está no formato correto para este desafio.</p>
+                <p>Revise a saída do <code>EXPLAIN</code> original. O principal indicador de problema é o alto volume de <strong><code>Read Bytes</code></strong> mesmo com o <code>SHARDED_SCAN</code>, indicando que a função de texto livre está varrendo muitos dados.</p>
+                <p>Pense em como o BigQuery otimiza as pesquisas de texto livre em grandes volumes de dados. Há uma funcionalidade específica para isso que envolve um tipo especial de índice e uma função de busca dedicada.</p>
+            `;
+            feedbackDiv.className = 'feedback failure';
+        }
+
+        feedbackDiv.innerHTML = feedbackHtml;
+        feedbackDiv.style.display = 'block';
+        feedbackDiv.scrollIntoView({ behavior: 'smooth' });
+    });
+</script>
+</body>
+</html>
