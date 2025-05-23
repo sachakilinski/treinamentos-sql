@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Otimização de Queries: Desafio 4 - (PostgreSQL)</title>
+    <title>Desafio de Otimização de Queries: PostgreSQL</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -92,6 +92,11 @@
             color: #721c24;
             border: 1px solid #f5c6cb;
         }
+        .feedback.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
         .feedback h3 {
             margin-top: 0;
             color: #0056b3;
@@ -125,7 +130,7 @@
 </head>
 <body>
 <div class="container">
-    <h1>Otimização de Queries: Desafio 4  (PostgreSQL)</h1>
+    <h1>Desafio de Otimização de Queries: PostgreSQL</h1>
 
     <div class="section">
         <h2>Modelo de Dados:</h2>
@@ -200,7 +205,7 @@ WHERE
 
     <div class="section">
         <h3>Caixa de Texto para Solução:</h3>
-        <textarea id="solutionInput" placeholder="-- Insira sua solução SQL aqui (pode ser uma query otimizada, criação de índices especiais, etc.)"></textarea>
+        <textarea id="solutionInput" placeholder="-- Insira sua solução SQL aqui (ex: CREATE INDEX, ajuste na query, etc.)"></textarea>
         <button id="submitButton">Submeter Melhoria</button>
     </div>
 
@@ -208,7 +213,7 @@ WHERE
     </div>
 
     <details class="section">
-        <summary>Visualizar Solução Sugerida (Desafio 4)</summary>
+        <summary>Visualizar Solução Sugerida</summary>
         <div>
             <h3>Solução de Índice (Full-Text Search):</h3>
             <pre><code>-- 1. Adicionar uma coluna de tsvector para otimização de busca
@@ -241,7 +246,7 @@ UPDATE produtos SET descricao_fts = to_tsvector('portuguese', descricao_longa);
 FROM
     produtos
 WHERE
-    descricao_fts @@ to_tsquery('portuguese', 'melhoria & performance');
+    descricao_fts @@ to_tsquery('portuguese', 'melhoria &amp; performance');
 -- Ou para múltiplas palavras OR:
 -- WHERE descricao_fts @@ to_tsquery('portuguese', 'melhoria | performance');
 </code></pre>
@@ -260,26 +265,81 @@ WHERE
 </div>
 
 <script>
-    document.getElementById('submitButton').addEventListener('click', function() {
-        const solution = document.getElementById('solutionInput').value.trim();
+    document.addEventListener('DOMContentLoaded', () => {
+        const submitButton = document.getElementById('submitButton');
+        const solutionInput = document.getElementById('solutionInput');
         const feedbackDiv = document.getElementById('feedback');
-        let feedbackHtml = '';
-        let isSuccess = false;
 
-        const submittedSolutionCleaned = solution.toLowerCase().replace(/\s+/g, ' ').trim();
+        submitButton.addEventListener('click', () => {
+            const solution = solutionInput.value.trim();
+            let feedbackHtml = '';
+            let isSuccess = false;
 
-        // Check for key elements of a Full-Text Search solution
-        const hasTsvector = submittedSolutionCleaned.includes("tsvector") || submittedSolutionCleaned.includes("to_tsvector");
-        const hasGinIndex = submittedSolutionCleaned.includes("create index") && submittedSolutionCleaned.includes("using gin");
-        const hasTsqueryOp = submittedSolutionCleaned.includes("to_tsquery") && submittedSolutionCleaned.includes("@@");
-        const hasLanguage = submittedSolutionCleaned.includes("'portuguese'") || submittedSolutionCleaned.includes("'english'"); // Or another language
+            // Normalize solution string for comparison.
+            const submittedSolutionCleaned = solution.toLowerCase()
+                                                    .replace(/\s+/g, ' ') // Replace multiple spaces with single space
+                                                    .replace(/;/g, '')    // Remove semicolons
+                                                    .trim();
 
-        // This challenge is a bit more complex, so we check for the combination of steps
-        // A perfect solution would have all, but we can accept partial for feedback.
-        // For 'success', we'll require the core index and query transformation.
-        if (hasTsvector && hasGinIndex && hasTsqueryOp && hasLanguage) {
-            isSuccess = true;
-            const optimizedExplain = `
+            // --- Validação de Sintaxe SQL Genérica (Nível 1) ---
+            const genericSqlPattern = /^(select|insert|update|delete|create|alter|drop|with|explain|vacuum|analyze|reindex|set|show)\s/i;
+            const hasParen = submittedSolutionCleaned.includes("(") && submittedSolutionCleaned.includes(")");
+            const hasFromOrOn = submittedSolutionCleaned.includes(" from ") || submittedSolutionCleaned.includes(" on ");
+            const hasWhereOrGroup = submittedSolutionCleaned.includes(" where ") || submittedSolutionCleaned.includes(" group by ");
+            const isMeaningfullyLong = submittedSolutionCleaned.length > 5;
+
+            const isLikelyValidSql = genericSqlPattern.test(submittedSolutionCleaned) ||
+                                     (isMeaningfullyLong && (hasParen || hasFromOrOn || hasWhereOrGroup || submittedSolutionCleaned.includes("=")));
+
+            if (!isLikelyValidSql) {
+                feedbackHtml = `
+                    <h3>🚫 ERRO: Sintaxe SQL Inválida!</h3>
+                    <p>Sua submissão não parece ser uma instrução SQL válida.</p>
+                    <p>Por favor, verifique a sintaxe geral do seu comando SQL. Exemplo: <code>CREATE INDEX...</code>, <code>SELECT...</code>, <code>ALTER TABLE...</code>.</p>
+                    <p>O comando submetido foi: <pre><code>${solution}</code></pre></p>
+                `;
+                feedbackDiv.className = 'feedback failure';
+                feedbackDiv.innerHTML = feedbackHtml;
+                feedbackDiv.style.display = 'block';
+                feedbackDiv.scrollIntoView({ behavior: 'smooth' });
+                return;
+            }
+
+            // --- Validação do Tipo de Comando Esperado para a Solução (Nível 2) ---
+            // For this challenge, we expect a combination of ALTER TABLE/CREATE INDEX AND a SELECT query.
+            // We'll check for the key components across the *entire submitted text*.
+
+            const isExpectedAlterCommand = submittedSolutionCleaned.includes("alter table") && submittedSolutionCleaned.includes("add column") && submittedSolutionCleaned.includes("tsvector");
+            const isExpectedCreateIndexCommand = submittedSolutionCleaned.includes("create index") && submittedSolutionCleaned.includes("using gin") && submittedSolutionCleaned.includes("tsvector");
+            const isExpectedSelectCommand = submittedSolutionCleaned.includes("select") && submittedSolutionCleaned.includes("from produtos") && submittedSolutionCleaned.includes("tsvector @@ to_tsquery");
+
+            const isCorrectType = isExpectedAlterCommand || isExpectedCreateIndexCommand || isExpectedSelectCommand;
+
+            if (!isCorrectType) {
+                 feedbackHtml = `
+                    <h3>🤔 Comando Válido, Mas Inesperado para Este Desafio!</h3>
+                    <p>Sua submissão é uma instrução SQL válida, mas **não é o tipo de comando esperado para otimizar este problema de performance**.</p>
+                    <p>Para este desafio, esperamos uma solução que envolva a configuração de **Full-Text Search** no PostgreSQL (adicionar coluna TSVECTOR, criar índice GIN e usar uma query com <code>@@ to_tsquery</code>).</p>
+                    <p>O comando submetido foi: <pre><code>${solution}</code></pre></p>
+                `;
+                feedbackDiv.className = 'feedback failure';
+                feedbackDiv.innerHTML = feedbackHtml;
+                feedbackDiv.style.display = 'block';
+                feedbackDiv.scrollIntoView({ behavior: 'smooth' });
+                return;
+            }
+
+            // --- Validação da Eficácia da Solução (Nível 3: Lógica específica do desafio) ---
+            // Check if all core components of the FTS solution are present
+            const hasTsvectorColumnCreation = submittedSolutionCleaned.includes("alter table produtos add column") && submittedSolutionCleaned.includes("tsvector");
+            const hasGinIndexCreation = submittedSolutionCleaned.includes("create index") && submittedSolutionCleaned.includes("on produtos") && submittedSolutionCleaned.includes("using gin") && submittedSolutionCleaned.includes("tsvector");
+            const hasOptimizedFtsQuery = submittedSolutionCleaned.includes("select") && submittedSolutionCleaned.includes("from produtos") && submittedSolutionCleaned.includes("descricao_fts @@ to_tsquery") && (submittedSolutionCleaned.includes("'portuguese'") || submittedSolutionCleaned.includes("'english'")); // Check for language
+
+            // A user might submit parts. For success, we require the core setup AND the optimized query.
+            // It's acceptable for the user to submit multiple commands in the textarea.
+            if (hasTsvectorColumnCreation && hasGinIndexCreation && hasOptimizedFtsQuery) {
+                isSuccess = true;
+                const optimizedExplain = `
                                         QUERY PLAN
 --------------------------------------------------------------------------------------------------
 Bitmap Heap Scan on produtos  (cost=12.50..80.70 rows=50 width=120) (actual time=0.800..2.500 rows=50 loops=1)
@@ -289,8 +349,8 @@ Buffers: shared hit=20
      Index Cond: (descricao_fts @@ to_tsquery('portuguese'::regconfig, 'melhoria & performance'::text))
      Buffers: shared hit=5
 (7 rows)
-            `;
-            const optimizedPlanDescription = `Você identificou e resolveu o problema do \`ILIKE '%termo%'\` ineficiente! O <code>EXPLAIN ANALYZE</code> original mostrava um caro <code>Seq Scan</code>.
+                `;
+                const optimizedPlanDescription = `Você identificou e resolveu o problema do \`ILIKE '%termo%'\` ineficiente! O <code>EXPLAIN ANALYZE</code> original mostrava um caro <code>Seq Scan</code>.
 
 Sua solução de utilizar as funcionalidades de **Full-Text Search (FTS) do PostgreSQL** é a abordagem correta.
 <ul>
@@ -300,43 +360,45 @@ Sua solução de utilizar as funcionalidades de **Full-Text Search (FTS) do Post
 </ul>
 Esta abordagem é fundamental para pesquisas de texto livre escaláveis no PostgreSQL, resultando em uma melhoria drástica no tempo de execução e consumo de recursos.`;
 
-            feedbackHtml = `
-                <h3>🎉 SUCESSO! 🎉</h3>
-                <p><strong>Análise da Sua Solução:</strong></p>
-                <p class="metric"><strong>Tempo de Execução Estimado (APÓS SUA OTIMIZAÇÃO):</strong> <span class="highlight">0.05 segundos</span> (redução de 99.9%)</p>
-                <p class="metric"><strong>Recursos Consumidos (I/O Disk):</strong> <span class="highlight">Alguns KB lidos</span> (redução de 99.9%)</p>
-                <p class="metric"><strong>Uso de CPU:</strong> <span class="highlight">Baixo</span></p>
+                feedbackHtml = `
+                    <h3>🎉 SUCESSO! 🎉</h3>
+                    <p><strong>Análise da Sua Solução:</strong></p>
+                    <p class="metric"><strong>Tempo de Execução Estimado (APÓS SUA OTIMIZAÇÃO):</strong> <span class="highlight">0.05 segundos</span> (redução de 99.9%)</p>
+                    <p class="metric"><strong>Recursos Consumidos (I/O Disk):</strong> <span class="highlight">Alguns KB lidos</span> (redução de 99.9%)</p>
+                    <p class="metric"><strong>Uso de CPU:</strong> <span class="highlight">Baixo</span></p>
 
-                <details open>
-                    <summary>Visualizar Saída do EXPLAIN ANALYZE (APÓS SUA OTIMIZAÇÃO - Simulada)</summary>
-                    <div>
-                        <pre><code>${optimizedExplain}</code></pre>
-                    </div>
-                </details>
+                    <details open>
+                        <summary>Visualizar Saída do EXPLAIN ANALYZE (APÓS SUA OTIMIZAÇÃO - Simulada)</summary>
+                        <div>
+                            <pre><code>${optimizedExplain}</code></pre>
+                        </div>
+                    </details>
 
-                <details open>
-                    <summary>Visualizar Descrição do Plano (Interpretação do EXPLAIN ANALYZE)</summary>
-                    <div>
-                        <p>${optimizedPlanDescription}</p>
-                    </div>
-                </details>
+                    <details open>
+                        <summary>Visualizar Descrição do Plano (Interpretação do EXPLAIN ANALYZE)</summary>
+                        <div>
+                            <p>${optimizedPlanDescription}</p>
+                        </div>
+                    </details>
 
-                <p><strong>Parabéns!</strong> Você dominou o desafio de otimização de pesquisas de texto livre no PostgreSQL!</p>
-            `;
-            feedbackDiv.className = 'feedback success';
-        } else {
-            feedbackHtml = `
-                <h3>😔 Tente Novamente! 😔</h3>
-                <p>Sua solução ainda não atingiu o nível de otimização esperado ou não está no formato correto para este desafio.</p>
-                <p>Revise a saída do <code>EXPLAIN ANALYZE</code> original. O principal indicador de problema é o <strong><code>Seq Scan on produtos</code></strong>, que significa que o PostgreSQL está lendo a tabela inteira. Isso ocorre porque o wildcard inicial do `ILIKE` impede o uso de índices B-tree normais.</p>
-                <p>Pense em **técnicas e tipos de índice especiais** no PostgreSQL para otimizar pesquisas de texto livre que não dependem de prefixos exatos.</p>
-            `;
-            feedbackDiv.className = 'feedback failure';
-        }
+                    <p><strong>Parabéns!</strong> Você dominou o desafio de otimização de pesquisas de texto livre no PostgreSQL!</p>
+                `;
+                feedbackDiv.className = 'feedback success';
+            } else {
+                // Command is CREATE INDEX/ALTER TABLE/SELECT, but not the complete/optimal FTS solution
+                feedbackHtml = `
+                    <h3>😔 Comando Incorreto para Otimização! 😔</h3>
+                    <p>Sua solução é uma instrução SQL válida, mas **não abordou o problema de performance de forma eficaz** ou não seguiu a estratégia ideal para Full-Text Search neste desafio.</p>
+                    <p>Lembre-se que a solução de Full-Text Search no PostgreSQL envolve múltiplas etapas: <strong>adicionar uma coluna TSVECTOR</strong>, <strong>criar um índice GIN</strong> nessa coluna e **modificar a query** para usar operadores e funções de FTS (<code>@@ to_tsquery()</code>).</p>
+                    <p>O comando submetido foi: <pre><code>${solution}</code></pre></p>
+                `;
+                feedbackDiv.className = 'feedback failure';
+            }
 
-        feedbackDiv.innerHTML = feedbackHtml;
-        feedbackDiv.style.display = 'block';
-        feedbackDiv.scrollIntoView({ behavior: 'smooth' });
+            feedbackDiv.innerHTML = feedbackHtml;
+            feedbackDiv.style.display = 'block';
+            feedbackDiv.scrollIntoView({ behavior: 'smooth' });
+        });
     });
 </script>
 </body>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Otimização de Queries: Desafio 3 - Escaneamento Excessivo de Dados</title>
+    <title>Desafio de Otimização de Queries: BigQuery</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -92,6 +92,11 @@
             color: #721c24;
             border: 1px solid #f5c6cb;
         }
+        .feedback.info { /* Adicionado para feedback "Bom começo" */
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
         .feedback h3 {
             margin-top: 0;
             color: #0056b3;
@@ -125,7 +130,7 @@
 </head>
 <body>
 <div class="container">
-    <h1>Otimização de Queries: Desafio 3 - Escaneamento Excessivo de Dados (BigQuery)</h1>
+    <h1>Desafio de Otimização de Queries: BigQuery</h1>
 
     <div class="section">
         <h2>Modelo de Dados:</h2>
@@ -226,12 +231,12 @@ Query Stages:
 
     <div class="section">
         <h2>Sua Missão:</h2>
-        <p>Analise a query, o modelo de dados e a saída do <code>EXPLAIN</code>. Identifique o(s) problema(s) de performance e o(s) gargalo(s) principal(is). Proponha uma ou mais instruções SQL que otimizem a performance desta query, visando reduzir drasticamente os dados escaneados e o consumo de recursos.</p>
+        <p>Analise a query, o modelo de dados e a saída do <code>EXPLAIN</code>. Identifique o(s) problema(s) de performance e o(s) gargalo(s) principal(is). Proponha uma ou mais instruções SQL que otimizem drasticamente a performance desta query, visando reduzir drasticamente os dados escaneados e o consumo de recursos.</p>
     </div>
 
     <div class="section">
         <h3>Caixa de Texto para Solução:</h3>
-        <textarea id="solutionInput" placeholder="-- Insira sua solução SQL aqui (pode ser uma query otimizada, uso de recursos do BigQuery, etc.)"></textarea>
+        <textarea id="solutionInput" placeholder="-- Insira sua solução SQL aqui (ex: SELECT otimizado, uso de recursos BigQuery, etc.)"></textarea>
         <button id="submitButton">Submeter Melhoria</button>
     </div>
 
@@ -239,7 +244,7 @@ Query Stages:
     </div>
 
     <details class="section">
-        <summary>Visualizar Solução Sugerida (Desafio 3)</summary>
+        <summary>Visualizar Solução Sugerida</summary>
         <div>
             <h3>Query Otimizada:</h3>
             <pre><code>SELECT
@@ -272,18 +277,58 @@ ORDER BY
         let feedbackHtml = '';
         let isSuccess = false;
 
-        const submittedSolutionCleaned = solution.toLowerCase().replace(/\s+/g, ' ').trim();
+        const submittedSolutionCleaned = solution.toLowerCase().replace(/\s+/g, ' ').replace(/;/g, '').trim();
 
-        // Check for the core fix: using _TABLE_SUFFIX in the WHERE clause
+        // --- Validação de Sintaxe SQL Genérica (Nível 1) ---
+        const genericSqlPattern = /^(select|insert|update|delete|create|alter|drop|with|explain|vacuum|analyze|reindex|set|show)\s/i;
+        const hasParen = submittedSolutionCleaned.includes("(") && submittedSolutionCleaned.includes(")");
+        const hasFromOrOn = submittedSolutionCleaned.includes(" from ") || submittedSolutionCleaned.includes(" on ");
+        const hasWhereOrGroup = submittedSolutionCleaned.includes(" where ") || submittedSolutionCleaned.includes(" group by ");
+        const isMeaningfullyLong = submittedSolutionCleaned.length > 10;
+
+        const isLikelyValidSql = genericSqlPattern.test(submittedSolutionCleaned) ||
+                                 (isMeaningfullyLong && (hasParen || hasFromOrOn || hasWhereOrGroup || submittedSolutionCleaned.includes("=")) );
+
+        if (!isLikelyValidSql) {
+            feedbackHtml = `
+                <h3>🚫 ERRO: Sintaxe SQL Inválida!</h3>
+                <p>Sua submissão não parece ser uma instrução SQL válida.</p>
+                <p>Por favor, verifique a sintaxe geral do seu comando SQL. Exemplo: <code>SELECT...</code>, <code>CREATE TABLE...</code>, <code>WHERE...</code>.</p>
+                <p>O comando submetido foi: <pre><code>${solution}</code></pre></p>
+            `;
+            feedbackDiv.className = 'feedback failure';
+            feedbackDiv.innerHTML = feedbackHtml;
+            feedbackDiv.style.display = 'block';
+            feedbackDiv.scrollIntoView({ behavior: 'smooth' });
+            return;
+        }
+
+        // --- Validação do Tipo de Comando Esperado para a Solução (Nível 2) ---
+        // Para este desafio, esperamos uma query SELECT otimizada.
+        const isExpectedSelectCommand = submittedSolutionCleaned.startsWith("select");
+
+        if (!isExpectedSelectCommand) {
+             feedbackHtml = `
+                <h3>🤔 Comando Válido, Mas Inesperado para Este Desafio!</h3>
+                <p>Sua submissão é uma instrução SQL válida, mas **não é o tipo de comando esperado para otimizar este problema de performance**.</p>
+                <p>Para este desafio, esperamos uma instrução <strong>SELECT otimizada</strong>.</p>
+                <p>O comando submetido foi: <pre><code>${solution}</code></pre></p>
+            `;
+            feedbackDiv.className = 'feedback failure';
+            feedbackDiv.innerHTML = feedbackHtml;
+            feedbackDiv.style.display = 'block';
+            feedbackDiv.scrollIntoView({ behavior: 'smooth' });
+            return;
+        }
+
+        // --- Validação da Eficácia da Solução (Nível 3: Lógica específica do desafio BigQuery) ---
         const usesTableSuffix = submittedSolutionCleaned.includes("_table_suffix");
-        const hasCorrectDateRange = submittedSolutionCleaned.includes("'20240101'") && submittedSolutionCleaned.includes("'20240131'");
-
-        // Check if the essential filters are still present (event_type, device_info.os)
+        const hasCorrectDateRangeFormat = submittedSolutionCleaned.includes("'20240101'") && submittedSolutionCleaned.includes("'20240131'");
         const hasEventTypeFilter = submittedSolutionCleaned.includes("event_type = 'page_view'");
         const hasDeviceInfoFilter = submittedSolutionCleaned.includes("device_info.os in ('ios', 'android')");
+        const targetsEventsTable = submittedSolutionCleaned.includes("from `project.dataset.events`") || submittedSolutionCleaned.includes("from `project.dataset.events` as t");
 
-
-        if (usesTableSuffix && hasCorrectDateRange && hasEventTypeFilter && hasDeviceInfoFilter) {
+        if (targetsEventsTable && usesTableSuffix && hasCorrectDateRangeFormat && hasEventTypeFilter && hasDeviceInfoFilter) {
             isSuccess = true;
             const optimizedExplain = `
 Query Stages:
@@ -299,4 +344,71 @@ Operations:
 Output:
   Shuffle: Hash
   Write Bytes: 5 GB
-Slots
+Slots Used: 150
+Compute Ratio: 0.9
+Input Rows: 500,000,000 (total scanned)
+
+Query Stages:
+Stage 01:
+Input:
+  Shuffle: Hash (from Stage 00)
+  Read Bytes: 5 GB
+Operations:
+  - Final Group By
+  - Final Aggregate (COUNT(DISTINCT user_id))
+  - Final Order By (event_date)
+Output:
+  Table: __result__
+  Write Bytes: 10 MB
+Slots Used: 50
+Compute Ratio: 0.95
+Input Rows: 31 (final result rows)
+            `;
+            const optimizedPlanDescription = `Você identificou a causa raiz do problema: a forma como o filtro de data estava sendo aplicado não estava permitindo o **pruning de partições** adequado no BigQuery.
+
+A solução de usar a **pseudo-coluna \`_TABLE_SUFFIX\`** do BigQuery para filtrar as partições de forma explícita e eficiente é a chave. Ao usar \`t._TABLE_SUFFIX BETWEEN 'YYYYMMDD' AND 'YYYYMMDD'\`, você informa ao BigQuery exatamente quais partições ele deve escanear, reduzindo drasticamente a quantidade de dados lidos. Isso transforma um \`FULL_TABLE_SCAN\` em um \`SHARDED_SCAN\` direcionado.
+
+Além disso, o BigQuery consegue usar o clustering em \`event_type\` e \`user_id\` de forma mais eficaz sobre o conjunto de dados já reduzido pelas partições, otimizando ainda mais o filtro e a agregação.
+
+Esta otimização não apenas reduz o tempo de execução, mas, crucialmente no BigQuery, **diminui significativamente o volume de dados escaneados e, consequentemente, o custo da query**.<br><br><strong>Parabéns!</strong> Você dominou este desafio de otimização no BigQuery!`;
+
+            feedbackHtml = `
+                <h3>🎉 SUCESSO! 🎉</h3>
+                <p><strong>Análise da Sua Solução:</strong></p>
+                <p class="metric"><strong>Tempo de Execução Estimado (APÓS SUA OTIMIZAÇÃO):</strong> <span class="highlight">3 segundos</span> (redução de 93.3%)</p>
+                <p class="metric"><strong>Dados Escaneados Estimados:</strong> <span class="highlight">200 GB</span> (redução de 96.2%)</p>
+                <p class="metric"><strong>Custo Estimado (aprox. $):</strong> <span class="highlight">$1.00</span> (redução de 96.2%)</p>
+
+                <details open>
+                    <summary>Visualizar Saída do EXPLAIN (APÓS SUA OTIMIZAÇÃO - Simulada)</summary>
+                    <div>
+                        <pre><code>${optimizedExplain}</code></pre>
+                    </div>
+                </details>
+
+                <details open>
+                    <summary>Visualizar Descrição do Plano (Interpretação do EXPLAIN acima)</summary>
+                    <div>
+                        <p>${optimizedPlanDescription}</p>
+                    </div>
+                </details>
+            `;
+            feedbackDiv.className = 'feedback success';
+        } else {
+            feedbackHtml = `
+                <h3>😔 Comando Incorreto para Otimização! 😔</h3>
+                <p>Sua solução é uma instrução SQL válida, mas **não abordou o problema de performance de forma eficaz** ou não seguiu a estratégia ideal para este desafio.</p>
+                <p>Revise a saída do <code>EXPLAIN</code> original. O principal indicador de problema é o <strong><code>FULL_TABLE_SCAN</code></strong> e os <strong><code>Read Bytes</code></strong> extremamente altos, apesar do particionamento.</p>
+                <p>Dica: Pense em como o BigQuery gerencia as partições de uma tabela e como você pode explicitamente instruir a query a escanear apenas as partições necessárias para o intervalo de datas.</p>
+                <p>O comando submetido foi: <pre><code>${solution}</code></pre></p>
+            `;
+            feedbackDiv.className = 'feedback failure';
+        }
+
+        feedbackDiv.innerHTML = feedbackHtml;
+        feedbackDiv.style.display = 'block';
+        feedbackDiv.scrollIntoView({ behavior: 'smooth' });
+    });
+</script>
+</body>
+</html>

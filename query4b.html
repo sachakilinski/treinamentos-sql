@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Otimização de Queries: Desafio 4b - Pesquisa de Texto Livre Lenta (BigQuery)</title>
+    <title>Desafio de Otimização de Queries: BigQuery</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -92,6 +92,11 @@
             color: #721c24;
             border: 1px solid #f5c6cb;
         }
+        .feedback.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
         .feedback h3 {
             margin-top: 0;
             color: #0056b3;
@@ -125,7 +130,7 @@
 </head>
 <body>
 <div class="container">
-    <h1>Otimização de Queries: Desafio 4b - Pesquisa de Texto Livre Lenta (BigQuery)</h1>
+    <h1>Desafio de Otimização de Queries: BigQuery</h1>
 
     <div class="section">
         <h2>Modelo de Dados:</h2>
@@ -218,8 +223,7 @@ Query Stages:
 
     <div class="section">
         <h3>Caixa de Texto para Solução:</h3>
-        <textarea id="solutionInput" placeholder="-- Insira sua solução SQL aqui (pode ser uma nova query, comando de CREATE SEARCH INDEX, etc.)
--- Pense em como o BigQuery pode otimizar buscas de texto livre de forma eficiente."></textarea>
+        <textarea id="solutionInput" placeholder="-- Insira sua solução SQL aqui (ex: nova query, comando de CREATE SEARCH INDEX, etc.)"></textarea>
         <button id="submitButton">Submeter Melhoria</button>
     </div>
 
@@ -227,7 +231,7 @@ Query Stages:
     </div>
 
     <details class="section">
-        <summary>Visualizar Solução Sugerida (Desafio 4b)</summary>
+        <summary>Visualizar Solução Sugerida</summary>
         <div>
             <h3>Solução de Índice (Search Index):</h3>
             <pre><code>-- 1. Criar um Search Index na coluna error_message
@@ -265,23 +269,79 @@ WHERE
 </div>
 
 <script>
-    document.getElementById('submitButton').addEventListener('click', function() {
-        const solution = document.getElementById('solutionInput').value.trim();
+    document.addEventListener('DOMContentLoaded', () => {
+        const submitButton = document.getElementById('submitButton');
+        const solutionInput = document.getElementById('solutionInput');
         const feedbackDiv = document.getElementById('feedback');
-        let feedbackHtml = '';
-        let isSuccess = false;
 
-        const submittedSolutionCleaned = solution.toLowerCase().replace(/\s+/g, ' ').trim();
+        submitButton.addEventListener('click', () => {
+            const solution = solutionInput.value.trim();
+            let feedbackHtml = '';
+            let isSuccess = false;
 
-        // Check for key elements of a BigQuery Search Index solution
-        const hasCreateIndex = submittedSolutionCleaned.includes("create search index");
-        const hasSearchFunction = submittedSolutionCleaned.includes("search(");
-        const targetsErrorMessage = submittedSolutionCleaned.includes("error_message");
+            // Normalize solution string for comparison.
+            const submittedSolutionCleaned = solution.toLowerCase()
+                                                    .replace(/\s+/g, ' ') // Replace multiple spaces with single space
+                                                    .replace(/;/g, '')    // Remove semicolons
+                                                    .trim();
 
-        // For a successful submission, we need both index creation and query change
-        if (hasCreateIndex && hasSearchFunction && targetsErrorMessage) {
-            isSuccess = true;
-            const optimizedExplain = `
+            // --- Validação de Sintaxe SQL Genérica (Nível 1) ---
+            const genericSqlPattern = /^(select|insert|update|delete|create|alter|drop|with|explain|vacuum|analyze|reindex|set|show)\s/i;
+            const hasParen = submittedSolutionCleaned.includes("(") && submittedSolutionCleaned.includes(")");
+            const hasFromOrOn = submittedSolutionCleaned.includes(" from ") || submittedSolutionCleaned.includes(" on ");
+            const hasWhereOrGroup = submittedSolutionCleaned.includes(" where ") || submittedSolutionCleaned.includes(" group by ");
+            const isMeaningfullyLong = submittedSolutionCleaned.length > 5;
+
+            const isLikelyValidSql = genericSqlPattern.test(submittedSolutionCleaned) ||
+                                     (isMeaningfullyLong && (hasParen || hasFromOrOn || hasWhereOrGroup || submittedSolutionCleaned.includes("=")));
+
+            if (!isLikelyValidSql) {
+                feedbackHtml = `
+                    <h3>🚫 ERRO: Sintaxe SQL Inválida!</h3>
+                    <p>Sua submissão não parece ser uma instrução SQL válida.</p>
+                    <p>Por favor, verifique a sintaxe geral do seu comando SQL. Exemplo: <code>CREATE INDEX...</code>, <code>SELECT...</code>, <code>ALTER TABLE...</code>.</p>
+                    <p>O comando submetido foi: <pre><code>${solution}</code></pre></p>
+                `;
+                feedbackDiv.className = 'feedback failure';
+                feedbackDiv.innerHTML = feedbackHtml;
+                feedbackDiv.style.display = 'block';
+                feedbackDiv.scrollIntoView({ behavior: 'smooth' });
+                return;
+            }
+
+            // --- Validação do Tipo de Comando Esperado para a Solução (Nível 2) ---
+            // For this challenge, we expect a combination of CREATE SEARCH INDEX and a SELECT query.
+            const isExpectedCreateIndexCommand = submittedSolutionCleaned.includes("create search index");
+            const isExpectedSelectCommand = submittedSolutionCleaned.includes("select") && submittedSolutionCleaned.includes("search(");
+
+            // For success, at least one of these must be present, but ideally both or combined.
+            const isCorrectType = isExpectedCreateIndexCommand || isExpectedSelectCommand;
+
+            if (!isCorrectType) {
+                 feedbackHtml = `
+                    <h3>🤔 Comando Válido, Mas Inesperado para Este Desafio!</h3>
+                    <p>Sua submissão é uma instrução SQL válida, mas **não é o tipo de comando esperado para otimizar este problema de performance**.</p>
+                    <p>Para este desafio, esperamos uma solução que envolva a configuração de **Search Indexes** no BigQuery (<code>CREATE SEARCH INDEX</code> e uma query com <code>SEARCH()</code>).</p>
+                    <p>O comando submetido foi: <pre><code>${solution}</code></pre></p>
+                `;
+                feedbackDiv.className = 'feedback failure';
+                feedbackDiv.innerHTML = feedbackHtml;
+                feedbackDiv.style.display = 'block';
+                feedbackDiv.scrollIntoView({ behavior: 'smooth' });
+                return;
+            }
+
+            // --- Validação da Eficácia da Solução (Nível 3: Lógica específica do desafio) ---
+            // Check if all core components of the Search Index solution are present and correctly applied.
+            const hasSearchIndexCreation = submittedSolutionCleaned.includes("create search index") && submittedSolutionCleaned.includes("on `project.dataset.error_logs`(error_message)");
+            const hasOptimizedSearchQuery = submittedSolutionCleaned.includes("select") &&
+                                            submittedSolutionCleaned.includes("from `project.dataset.error_logs`") &&
+                                            submittedSolutionCleaned.includes("search(error_message,"); // More specific search() check
+
+            // A user might submit multiple commands. For success, we check if BOTH the index creation and the optimized query are present.
+            if (hasSearchIndexCreation && hasOptimizedSearchQuery) {
+                isSuccess = true;
+                const optimizedExplain = `
 Query Stages:
 Stage 00:
 Input:
@@ -310,52 +370,55 @@ Output:
 Slots Used: 10
 Compute Ratio: 0.99
 Input Rows: 50 (final result rows)
-            `;
-            const optimizedPlanDescription = `Você identificou a solução ideal para pesquisas de texto livre no BigQuery: a utilização de **Search Indexes** e a função \`SEARCH()\` correspondente.
+                `;
+                const optimizedPlanDescription = `Você identificou a solução ideal para pesquisas de texto livre no BigQuery: a utilização de **Search Indexes** e a função \`SEARCH()\` correspondente.
 <ul>
 <li>**\`CREATE SEARCH INDEX\`:** Este comando cria um índice de pesquisa especializado na coluna \`error_message\`. Diferente de uma varredura \`REGEXP_CONTAINS\`, um Search Index é um índice invertido, permitindo que o BigQuery localize rapidamente as linhas que contêm os termos de busca sem precisar escanear a coluna inteira.</li>
 <li>**Função \`SEARCH()\`:** Ao substituir \`REGEXP_CONTAINS\` por \`SEARCH()\`, você instrui o BigQuery a utilizar o Search Index recém-criado. Esta função é otimizada para trabalhar com os Search Indexes.</li>
-<li>**Otimização Combinada:** O BigQuery agora pode primeiro podar as partições por \`event_timestamp\` (como antes), e então, dentro da partição relevante, usar o **Search Index** para encontrar as mensagens de erro, resultando em um \`INDEX_SCAN_ON_SEARCH_INDEX\` altamente eficiente. Isso reduz drasticamente a quantidade de dados lidos e processados, impactando diretamente o tempo de execução e o custo.</li>
+<li>**Otimização Combinada:** O BigQuery agora pode primeiro podar as partições por \`event_timestamp\` (o que já estava acontecendo), e então, dentro da partição relevante, usar o **Search Index** para encontrar as mensagens de erro, resultando em um \`INDEX_SCAN_ON_SEARCH_INDEX\` altamente eficiente. Isso reduz drasticamente a quantidade de dados lidos e processados, impactando diretamente o tempo de execução e o custo.</li>
 </ul>
-Esta abordagem é a mais eficiente para pesquisa de texto livre escalável no BigQuery, transformando uma query lenta e cara em uma operação rápida e de baixo custo.`;
+Esta abordagem é a mais eficiente e recomendada para pesquisa de texto livre escalável no BigQuery, transformando uma query lenta e cara em uma operação rápida e de baixo custo.`;
 
-            feedbackHtml = `
-                <h3>🎉 SUCESSO! 🎉</h3>
-                <p><strong>Análise da Sua Solução:</strong></p>
-                <p class="metric"><strong>Tempo de Execução Estimado (APÓS SUA OTIMIZAÇÃO):</strong> <span class="highlight">2 segundos</span> (redução de 94.3%)</p>
-                <p class="metric"><strong>Dados Escaneados Estimados:</strong> <span class="highlight">5 GB</span> (redução de 99.3%)</p>
-                <p class="metric"><strong>Custo Estimado (aprox. $):</strong> <span class="highlight">$0.025</span> (redução de 99.3%)</p>
+                feedbackHtml = `
+                    <h3>🎉 SUCESSO! 🎉</h3>
+                    <p><strong>Análise da Sua Solução:</strong></p>
+                    <p class="metric"><strong>Tempo de Execução Estimado (APÓS SUA OTIMIZAÇÃO):</strong> <span class="highlight">2 segundos</span> (redução de 94.3%)</p>
+                    <p class="metric"><strong>Dados Escaneados Estimados:</strong> <span class="highlight">5 GB</span> (redução de 99.3%)</p>
+                    <p class="metric"><strong>Custo Estimado (aprox. $):</strong> <span class="highlight">$0.025</span> (redução de 99.3%)</p>
 
-                <details open>
-                    <summary>Visualizar Saída do EXPLAIN (APÓS SUA OTIMIZAÇÃO - Simulada)</summary>
-                    <div>
-                        <pre><code>${optimizedExplain}</code></pre>
-                    </div>
-                </details>
+                    <details open>
+                        <summary>Visualizar Saída do EXPLAIN (APÓS SUA OTIMIZAÇÃO - Simulada)</summary>
+                        <div>
+                            <pre><code>${optimizedExplain}</code></pre>
+                        </div>
+                    </details>
 
-                <details open>
-                    <summary>Visualizar Descrição do Plano (Interpretação do EXPLAIN acima)</summary>
-                    <div>
-                        <p>${optimizedPlanDescription}</p>
-                    </div>
-                </details>
+                    <details open>
+                        <summary>Visualizar Descrição do Plano (Interpretação do EXPLAIN acima)</summary>
+                        <div>
+                            <p>${optimizedPlanDescription}</p>
+                        </div>
+                    </details>
 
-                <p><strong>Parabéns!</strong> Você dominou o desafio de otimização de pesquisas de texto livre no BigQuery!</p>
-            `;
-            feedbackDiv.className = 'feedback success';
-        } else {
-            feedbackHtml = `
-                <h3>😔 Tente Novamente! 😔</h3>
-                <p>Sua solução ainda não atingiu o nível de otimização esperado ou não está no formato correto para este desafio.</p>
-                <p>Revise a saída do <code>EXPLAIN</code> original. O principal indicador de problema é o alto volume de <strong><code>Read Bytes</code></strong> mesmo com o <code>SHARDED_SCAN</code>, indicando que a função de texto livre está varrendo muitos dados.</p>
-                <p>Pense em como o BigQuery otimiza as pesquisas de texto livre em grandes volumes de dados. Há uma funcionalidade específica para isso que envolve um tipo especial de índice e uma função de busca dedicada.</p>
-            `;
-            feedbackDiv.className = 'feedback failure';
-        }
+                    <p><strong>Parabéns!</strong> Você dominou o desafio de otimização de pesquisas de texto livre no BigQuery!</p>
+                `;
+                feedbackDiv.className = 'feedback success';
+            } else {
+                // Command is of the right type, but not the complete/optimal FTS solution
+                feedbackHtml = `
+                    <h3>😔 Comando Incorreto para Otimização! 😔</h3>
+                    <p>Sua solução é uma instrução SQL válida, mas **não abordou o problema de performance de forma eficaz** ou não seguiu a estratégia ideal para Search Indexes neste desafio.</p>
+                    <p>Lembre-se que a solução de pesquisa de texto livre no BigQuery usando Search Indexes envolve duas partes principais: <strong>criar o Search Index</strong> na coluna relevante e <strong>modificar a query</strong> para usar a função <code>SEARCH()</code>.</p>
+                    <p>Verifique se ambas as partes da solução foram incluídas e estão corretas.</p>
+                    <p>O comando submetido foi: <pre><code>${solution}</code></pre></p>
+                `;
+                feedbackDiv.className = 'feedback failure';
+            }
 
-        feedbackDiv.innerHTML = feedbackHtml;
-        feedbackDiv.style.display = 'block';
-        feedbackDiv.scrollIntoView({ behavior: 'smooth' });
+            feedbackDiv.innerHTML = feedbackHtml;
+            feedbackDiv.style.display = 'block';
+            feedbackDiv.scrollIntoView({ behavior: 'smooth' });
+        });
     });
 </script>
 </body>

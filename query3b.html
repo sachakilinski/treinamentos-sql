@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Otimização de Queries: Desafio 3b - Escaneamento Excessivo de Dados (PostgreSQL)</title>
+    <title>Desafio de Otimização de Queries: PostgreSQL</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -92,6 +92,11 @@
             color: #721c24;
             border: 1px solid #f5c6cb;
         }
+        .feedback.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
         .feedback h3 {
             margin-top: 0;
             color: #0056b3;
@@ -125,7 +130,7 @@
 </head>
 <body>
 <div class="container">
-    <h1>Otimização de Queries: Desafio 3b - Escaneamento Excessivo de Dados (PostgreSQL)</h1>
+    <h1>Desafio de Otimização de Queries: PostgreSQL</h1>
 
     <div class="section">
         <h2>Modelo de Dados:</h2>
@@ -136,7 +141,7 @@
     valor DECIMAL(12, 2) NOT NULL,
     data_transacao TIMESTAMP NOT NULL,
     tipo_transacao VARCHAR(50) NOT NULL, -- Ex: 'COMPRA', 'VENDA', 'DEPOSITO'
-    status_transacao VARCHAR(50) NOT NULL, -- Ex: 'APROVADA', 'PENDENTE', 'CANCELADA'
+    status_transacao VARCHAR(50) NOT NULL -- Ex: 'APROVADA', 'PENDENTE', 'CANCELADA'
     -- ... outras colunas
 );</code></pre>
         <p><strong>Observações Importantes:</strong></p>
@@ -158,8 +163,8 @@ FROM
     transacoes
 WHERE
     tipo_transacao = 'COMPRA'
-    AND valor > 1000.00
-    AND data_transacao >= NOW() - INTERVAL '1 year'
+    AND valor &gt; 1000.00
+    AND data_transacao &gt;= NOW() - INTERVAL '1 year'
 ORDER BY
     data_transacao DESC;
 </code></pre>
@@ -200,12 +205,12 @@ ORDER BY
 
     <div class="section">
         <h2>Sua Missão:</h2>
-        <p>Analise a query, o modelo de dados e a saída do <code>EXPLAIN ANALYZE</code>. Identifique o(s) problema(s) de performance e o(s) gargalo(s) principal(is). Proponha uma ou mais instruções SQL que otimizem a performance desta query, visando reduzir drasticamente os dados escaneados e o tempo de execução.</p>
+        <p>Analise a query, o modelo de dados e a saída do <code>EXPLAIN ANALYZE</code>. Identifique o(s) problema(s) de performance e o(s) gargalo(s) principal(is). Proponha uma ou mais instruções SQL que otimizem drasticamente a performance desta query, visando reduzir drasticamente os dados escaneados e o tempo de execução.</p>
     </div>
 
     <div class="section">
         <h3>Caixa de Texto para Solução:</h3>
-        <textarea id="solutionInput" placeholder="-- Insira sua solução SQL aqui (pode ser uma query otimizada, criação de índices, etc.)"></textarea>
+        <textarea id="solutionInput" placeholder="-- Insira sua solução SQL aqui (ex: CREATE INDEX, ajuste na query, etc.)"></textarea>
         <button id="submitButton">Submeter Melhoria</button>
     </div>
 
@@ -213,7 +218,7 @@ ORDER BY
     </div>
 
     <details class="section">
-        <summary>Visualizar Solução Sugerida (Desafio 3b)</summary>
+        <summary>Visualizar Solução Sugerida</summary>
         <div>
             <h3>Solução de Índice:</h3>
             <pre><code>CREATE INDEX idx_transacoes_tipo_data_valor ON transacoes (tipo_transacao, data_transacao DESC, valor);</code></pre>
@@ -221,9 +226,9 @@ ORDER BY
             <p>O problema central é o **<code>Seq Scan</code>** e o **<code>Sort</code> em disco**, ambos causados pela falta de um índice otimizado para as condições do <code>WHERE</code> e do <code>ORDER BY</code>.</p>
             <p>A criação de um **índice composto** como <code>(tipo_transacao, data_transacao DESC, valor)</code> é a solução mais eficaz:</p>
             <ul>
-                <li>**<code>tipo_transacao</code>:** É a primeira coluna e a condição de igualdade (<code>= 'COMPRA'</code>). Isso permite que o PostgreSQL use o índice para ir diretamente aos blocos de dados que contêm transações de `COMPRA`, evitando um `Seq Scan` massivo de toda a tabela.</li>
-                <li>**<code>data_transacao DESC</code>:** Esta coluna é a segunda no índice e corresponde à condição de `range` (último ano) e, crucialmente, à **ordem de saída (<code>ORDER BY data_transacao DESC</code>)**. Ao incluir a ordenação `DESC` diretamente no índice, o PostgreSQL pode ler os dados já na ordem desejada, eliminando a cara operação de `Sort` em disco.</li>
-                <li>**<code>valor</code>:** Embora `valor` seja a terceira coluna, sua inclusão no índice torna-o um **"covering index"** para a condição `valor > 1000.00` (ou ajuda na seletividade se `tipo_transacao` e `data_transacao` retornarem muitos resultados). Idealmente, para um filtro de range, seria a última. Se o índice também fosse um **"covering index"** para as colunas selecionadas (`transacao_id`, `data_transacao`, `valor`, `conta_id`) com uma cláusula `INCLUDE`, o PostgreSQL sequer precisaria acessar a tabela principal (Heap) para obter esses dados, mas o índice proposto já resolve o problema principal.</li>
+                <li>**`tipo_transacao`:** É a primeira coluna e a condição de igualdade (<code>= 'COMPRA'</code>). Isso permite que o PostgreSQL use o índice para ir diretamente aos blocos de dados que contêm transações de `COMPRA`, evitando um `Seq Scan` massivo de toda a tabela.</li>
+                <li>**`data_transacao DESC`:** Esta coluna é a segunda no índice e corresponde à condição de `range` (último ano) e, crucialmente, à **ordem de saída (<code>ORDER BY data_transacao DESC</code>)**. Ao incluir a ordenação `DESC` diretamente no índice, o PostgreSQL pode ler os dados já na ordem desejada, eliminando a cara operação de `Sort` em disco.</li>
+                <li>**`valor`:** Embora `valor` seja a terceira coluna, sua inclusão no índice torna-o um **"covering index"** para a condição `valor > 1000.00` (ou ajuda na seletividade se `tipo_transacao` e `data_transacao` retornarem muitos resultados). Idealmente, para um filtro de range, seria a última. Se o índice também fosse um **"covering index"** para as colunas selecionadas (`transacao_id`, `data_transacao`, `valor`, `conta_id`) com uma cláusula `INCLUDE`, o PostgreSQL sequer precisaria acessar a tabela principal (Heap) para obter esses dados, mas o índice proposto já resolve o problema principal.</li>
             </ul>
             <p>Com este índice, o PostgreSQL pode realizar um **<code>Index Scan</code>** ou **<code>Bitmap Index Scan</code>** eficiente, lendo apenas os dados relevantes e entregando-os já ordenados, transformando radicalmente o tempo de execução e o consumo de recursos.</p>
         </div>
@@ -231,86 +236,145 @@ ORDER BY
 </div>
 
 <script>
-    document.getElementById('submitButton').addEventListener('click', function() {
-        const solution = document.getElementById('solutionInput').value.trim();
+    document.addEventListener('DOMContentLoaded', () => {
+        const submitButton = document.getElementById('submitButton');
+        const solutionInput = document.getElementById('solutionInput');
         const feedbackDiv = document.getElementById('feedback');
-        let feedbackHtml = '';
-        let isSuccess = false;
 
-        const submittedSolutionCleaned = solution.toLowerCase().replace(/\s+/g, ' ').trim();
+        submitButton.addEventListener('click', () => {
+            const solution = solutionInput.value.trim();
+            let feedbackHtml = '';
+            let isSuccess = false;
 
-        const hasCreateIndex = submittedSolutionCleaned.includes("create index");
-        const hasTipoTransacao = submittedSolutionCleaned.includes("tipo_transacao");
-        const hasDataTransacaoDesc = submittedSolutionCleaned.includes("data_transacao desc");
-        const hasValor = submittedSolutionCleaned.includes("valor");
+            // Normalize solution string for comparison.
+            const submittedSolutionCleaned = solution.toLowerCase()
+                                                    .replace(/\s+/g, ' ') // Replace multiple spaces with single space
+                                                    .replace(/;/g, '')    // Remove semicolons
+                                                    .trim();
 
-        // Check for correct order for a compound index that covers filters and order by
-        const idxTipo = submittedSolutionCleaned.indexOf("tipo_transacao");
-        const idxDataDesc = submittedSolutionCleaned.indexOf("data_transacao desc");
-        const idxValor = submittedSolutionCleaned.indexOf("valor");
+            // --- Validação de Sintaxe SQL Genérica (Nível 1) ---
+            const genericSqlPattern = /^(select|insert|update|delete|create|alter|drop|with|explain|vacuum|analyze|reindex|set|show)\s/i;
+            const hasParen = submittedSolutionCleaned.includes("(") && submittedSolutionCleaned.includes(")");
+            const hasFromOrOn = submittedSolutionCleaned.includes(" from ") || submittedSolutionCleaned.includes(" on ");
+            const hasWhereOrGroup = submittedSolutionCleaned.includes(" where ") || submittedSolutionCleaned.includes(" group by ");
+            const isMeaningfullyLong = submittedSolutionCleaned.length > 5;
 
-        const isOrderCorrect = (idxTipo !== -1 && idxDataDesc !== -1 && idxValor !== -1) &&
-                               (idxTipo < idxDataDesc && idxDataDesc < idxValor);
+            const isLikelyValidSql = genericSqlPattern.test(submittedSolutionCleaned) ||
+                                     (isMeaningfullyLong && (hasParen || hasFromOrOn || hasWhereOrGroup || submittedSolutionCleaned.includes("=")));
 
-        // For a simpler check for the challenge, we accept if all components are there and in a reasonable order
-        const isSolutionEffective = hasCreateIndex && hasTipoTransacao && hasDataTransacaoDesc && hasValor && isOrderCorrect;
+            if (!isLikelyValidSql) {
+                feedbackHtml = `
+                    <h3>🚫 ERRO: Sintaxe SQL Inválida!</h3>
+                    <p>Sua submissão não parece ser uma instrução SQL válida.</p>
+                    <p>Por favor, verifique a sintaxe geral do seu comando SQL. Exemplo: <code>CREATE INDEX...</code>, <code>SELECT...</code>, <code>ALTER TABLE...</code>.</p>
+                    <p>O comando submetido foi: <pre><code>${solution}</code></pre></p>
+                `;
+                feedbackDiv.className = 'feedback failure';
+                feedbackDiv.innerHTML = feedbackHtml;
+                feedbackDiv.style.display = 'block';
+                feedbackDiv.scrollIntoView({ behavior: 'smooth' });
+                return;
+            }
 
-        if (isSolutionEffective) {
-            isSuccess = true;
-            const optimizedExplain = `
+            // --- Validação do Tipo de Comando Esperado para a Solução (Nível 2) ---
+            const isExpectedCreateIndexCommand = submittedSolutionCleaned.startsWith("create index");
+
+            if (!isExpectedCreateIndexCommand) {
+                 feedbackHtml = `
+                    <h3>🤔 Comando Válido, Mas Inesperado para Este Desafio!</h3>
+                    <p>Sua submissão é uma instrução SQL válida, mas **não é o tipo de comando esperado para otimizar este problema de performance**.</p>
+                    <p>Para este desafio, esperamos uma instrução para <strong>criar um índice</strong>.</p>
+                    <p>O comando submetido foi: <pre><code>${solution}</code></pre></p>
+                `;
+                feedbackDiv.className = 'feedback failure';
+                feedbackDiv.innerHTML = feedbackHtml;
+                feedbackDiv.style.display = 'block';
+                feedbackDiv.scrollIntoView({ behavior: 'smooth' });
+                return;
+            }
+
+            // --- Validação da Eficácia da Solução (Nível 3: Lógica específica do desafio) ---
+            // Expected solution structure: CREATE INDEX idx_transacoes_tipo_data_valor ON transacoes (tipo_transacao, data_transacao DESC, valor);
+
+            const targetsTransacoesTable = submittedSolutionCleaned.includes("on transacoes");
+
+            // Check for presence of key columns and 'desc' keyword using more flexible patterns
+            const hasTipoTransacao = submittedSolutionCleaned.includes("tipo_transacao");
+            const hasDataTransacao = submittedSolutionCleaned.includes("data_transacao");
+            const hasValor = submittedSolutionCleaned.includes("valor");
+
+            // Check for 'desc' specifically after 'data_transacao'
+            const hasDescAfterData = submittedSolutionCleaned.match(/data_transacao\s+desc/);
+
+            // Check for order of columns within the parentheses
+            const columnsPart = submittedSolutionCleaned.substring(submittedSolutionCleaned.indexOf('(') + 1, submittedSolutionCleaned.indexOf(')'));
+            const hasCorrectColumnOrder = columnsPart.includes('tipo_transacao') &&
+                                          columnsPart.includes('data_transacao') &&
+                                          columnsPart.includes('valor') &&
+                                          columnsPart.indexOf('tipo_transacao') < columnsPart.indexOf('data_transacao') &&
+                                          columnsPart.indexOf('data_transacao') < columnsPart.indexOf('valor');
+
+
+            // Final comprehensive check for effective solution
+            if (targetsTransacoesTable && hasTipoTransacao && hasDataTransacao && hasValor && hasDescAfterData && hasCorrectColumnOrder) {
+                isSuccess = true;
+                const optimizedExplain = `
                                         QUERY PLAN
 --------------------------------------------------------------------------------------------------
 Index Scan Backward using idx_transacoes_tipo_data_valor on transacoes  (cost=0.43..20.50 rows=18500 width=60) (actual time=0.080..0.145 rows=18500 loops=1)
 Index Cond: ((tipo_transacao = 'COMPRA'::text) AND (data_transacao >= (now() - '1 year'::interval)) AND (valor > 1000.00))
 (2 rows)
-            `;
-            const optimizedPlanDescription = `Você identificou e resolveu o problema de escaneamento excessivo! O <code>EXPLAIN ANALYZE</code> original mostrava um caro <code>Seq Scan</code> e um <code>Sort</code> em disco.
+                `;
+                const optimizedPlanDescription = `Você identificou e resolveu o problema de escaneamento excessivo! O <code>EXPLAIN ANALYZE</code> original mostrava um caro <code>Seq Scan</code> e um <code>Sort</code> em disco.
 
-Sua solução de criar um **índice composto** como <code>(tipo_transacao, data_transacao DESC, valor)</code> é ideal.
+Sua solução de criar um **índice composto** como \`CREATE INDEX idx_transacoes_tipo_data_valor ON transacoes (tipo_transacao, data_transacao DESC, valor);\` é ideal.
 <ul>
 <li>Ele permite que o PostgreSQL use um **<code>Index Scan Backward</code>** para filtrar diretamente por <code>tipo_transacao</code> e <code>data_transacao</code>, lendo apenas os dados relevantes.</li>
 <li>A inclusão de <code>data_transacao DESC</code> no índice também satisfaz a cláusula <code>ORDER BY</code> diretamente, eliminando completamente a necessidade de uma operação de <code>Sort</code> (especialmente o lento "external merge Disk").</li>
 <li>A coluna <code>valor</code> também é coberta pelo índice, ajudando a filtrar ainda mais cedo ou garantindo que o índice seja um "covering index" para parte das colunas da query.</li>
 </ul>
-Isso resulta em um plano de execução extremamente eficiente, transformando o tempo de resposta da query!`;
+Isso resulta em um plano de execução extremamente eficiente, transformando radicalmente o tempo de execução e o consumo de recursos!`;
 
-            feedbackHtml = `
-                <h3>🎉 SUCESSO! 🎉</h3>
-                <p><strong>Análise da Sua Solução:</strong></p>
-                <p class="metric"><strong>Tempo de Execução Estimado (APÓS SUA OTIMIZAÇÃO):</strong> <span class="highlight">0.18 segundos</span> (redução de 99.3%)</p>
-                <p class="metric"><strong>Recursos Consumidos (I/O Disk):</strong> <span class="highlight">150 KB lidos</span> (redução de 99.9%)</p>
-                <p class="metric"><strong>Uso de Memória:</strong> <span class="highlight">Baixo</span></p>
+                feedbackHtml = `
+                    <h3>🎉 SUCESSO! 🎉</h3>
+                    <p><strong>Análise da Sua Solução:</strong></p>
+                    <p class="metric"><strong>Tempo de Execução Estimado (APÓS SUA OTIMIZAÇÃO):</strong> <span class="highlight">0.18 segundos</span> (redução de 99.3%)</p>
+                    <p class="metric"><strong>Recursos Consumidos (I/O Disk):</strong> <span class="highlight">150 KB lidos</span> (redução de 99.9%)</p>
+                    <p class="metric"><strong>Uso de Memória:</strong> <span class="highlight">Baixo</span></p>
 
-                <details open>
-                    <summary>Visualizar Saída do EXPLAIN ANALYZE (APÓS SUA OTIMIZAÇÃO - Simulada)</summary>
-                    <div>
-                        <pre><code>${optimizedExplain}</code></pre>
-                    </div>
-                </details>
+                    <details open>
+                        <summary>Visualizar Saída do EXPLAIN ANALYZE (APÓS SUA OTIMIZAÇÃO - Simulada)</summary>
+                        <div>
+                            <pre><code>${optimizedExplain}</code></pre>
+                        </div>
+                    </details>
 
-                <details open>
-                    <summary>Visualizar Descrição do Plano (Interpretação do EXPLAIN ANALYZE)</summary>
-                    <div>
-                        <p>${optimizedPlanDescription}</p>
-                    </div>
-                </details>
+                    <details open>
+                        <summary>Visualizar Descrição do Plano (Interpretação do EXPLAIN ANALYZE)</summary>
+                        <div>
+                            <p>${optimizedPlanDescription}</p>
+                        </div>
+                    </details>
 
-                <p><strong>Parabéns!</strong> Você dominou o desafio de otimização de escaneamento excessivo de dados no PostgreSQL!</p>
-            `;
-            feedbackDiv.className = 'feedback success';
-        } else {
-            feedbackHtml = `
-                <h3>😔 Tente Novamente! 😔</h3>
-                <p>Sua solução ainda não atingiu o nível de otimização esperado ou não está no formato correto para este desafio.</p>
-                <p>Reveja a saída do <code>EXPLAIN ANALYZE</code> original. O principal indicador de problema é o <strong><code>Seq Scan on transacoes</code></strong>, que significa que o PostgreSQL está lendo a tabela inteira. Além disso, observe o <strong><code>Sort Method: external merge Disk</code></strong>, que indica que a ordenação está sendo feita em disco.</p>
-                <p>Pense em como você pode ajudar o PostgreSQL a evitar o `Seq Scan` e o `Sort` em disco, considerando as colunas usadas nas cláusulas `WHERE` e `ORDER BY`.</p>
-            `;
-            feedbackDiv.className = 'feedback failure';
-        }
+                    <p><strong>Parabéns!</strong> Você dominou o desafio de otimização de escaneamento excessivo de dados no PostgreSQL!</p>
+                `;
+                feedbackDiv.className = 'feedback success';
+            } else {
+                // Command is CREATE INDEX but not the optimal one for this problem
+                feedbackHtml = `
+                    <h3>😔 Comando Incorreto para Otimização! 😔</h3>
+                    <p>Sua solução é uma instrução SQL válida para criar um índice, mas **não abordou o problema de performance de forma eficaz** ou não seguiu a estratégia ideal para este desafio.</p>
+                    <p>Revise a saída do <code>EXPLAIN ANALYZE</code> original. O principal indicador de problema é o <strong><code>Seq Scan on transacoes</code></strong>, que significa que o PostgreSQL está lendo a tabela inteira. Além disso, observe o <strong><code>Sort Method: external merge Disk</code></strong>, que indica que a ordenação está sendo feita em disco.</p>
+                    <p>Dica: Pense em como você pode ajudar o PostgreSQL a evitar o \`Seq Scan\` e o \`Sort\` em disco, considerando as colunas usadas nas cláusulas \`WHERE\` e \`ORDER BY\` para um índice composto, e a **ordem correta** das colunas no índice (<code>tipo_transacao</code>, <code>data_transacao DESC</code>, <code>valor</code>).</p>
+                    <p>O comando submetido foi: <pre><code>${solution}</code></pre></p>
+                `;
+                feedbackDiv.className = 'feedback failure';
+            }
 
-        feedbackDiv.innerHTML = feedbackHtml;
-        feedbackDiv.style.display = 'block';
-        feedbackDiv.scrollIntoView({ behavior: 'smooth' });
+            feedbackDiv.innerHTML = feedbackHtml;
+            feedbackDiv.style.display = 'block';
+            feedbackDiv.scrollIntoView({ behavior: 'smooth' });
+        });
     });
 </script>
 </body>

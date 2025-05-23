@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Desafio de Otimização de Queries: Agregações</title>
+    <title>Desafio de Otimização de Queries: PostgreSQL</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -92,6 +92,11 @@
             color: #721c24;
             border: 1px solid #f5c6cb;
         }
+        .feedback.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
         .feedback h3 {
             margin-top: 0;
             color: #0056b3;
@@ -125,7 +130,7 @@
 </head>
 <body>
 <div class="container">
-    <h1>Desafio de Otimização de Queries: Agregações (PostgreSQL)</h1>
+    <h1>Desafio de Otimização de Queries: PostgreSQL</h1>
 
     <div class="section">
         <h2>Modelo de Dados:</h2>
@@ -208,7 +213,7 @@ ORDER BY
 
     <div class="section">
         <h3>Caixa de Texto para Solução:</h3>
-        <textarea id="solutionInput" placeholder="-- Insira sua solução SQL aqui (pode ser uma query otimizada, criação de índices, etc.)"></textarea>
+        <textarea id="solutionInput" placeholder="-- Insira sua solução SQL aqui (ex: CREATE INDEX, ajuste na query, etc.)"></textarea>
         <button id="submitButton">Submeter Melhoria</button>
     </div>
 
@@ -216,7 +221,7 @@ ORDER BY
     </div>
 
     <details class="section">
-        <summary>Visualizar Solução Sugerida (Desafio 5)</summary>
+        <summary>Visualizar Solução Sugerida</summary>
         <div>
             <h3>Solução de Índice e Agregação Otimizada:</h3>
             <pre><code>-- 1. Criar um índice composto que cubra o filtro e ajude no GROUP BY/COUNT(DISTINCT)
@@ -236,7 +241,7 @@ SELECT
 FROM
     interacoes_usuario
 WHERE
-    data_interacao >= NOW() - INTERVAL '90 days'
+    data_interacao &gt;= NOW() - INTERVAL '90 days'
 GROUP BY
     DATE(data_interacao)
 ORDER BY
@@ -270,29 +275,122 @@ ORDER BY
 </div>
 
 <script>
-    document.getElementById('submitButton').addEventListener('click', function() {
-        const solution = document.getElementById('solutionInput').value.trim();
+    document.addEventListener('DOMContentLoaded', () => {
+        const submitButton = document.getElementById('submitButton');
+        const solutionInput = document.getElementById('solutionInput');
         const feedbackDiv = document.getElementById('feedback');
-        let feedbackHtml = '';
-        let isSuccess = false;
 
-        const submittedSolutionCleaned = solution.toLowerCase().replace(/\s+/g, ' ').trim();
+        submitButton.addEventListener('click', () => {
+            const solution = solutionInput.value.trim();
+            let feedbackHtml = '';
+            let isSuccess = false;
 
-        const hasCreateIndex = submittedSolutionCleaned.includes("create index");
-        const hasDataInteracao = submittedSolutionCleaned.includes("data_interacao");
-        const hasUsuarioId = submittedSolutionCleaned.includes("usuario_id");
-        const hasDescOrder = submittedSolutionCleaned.includes("desc"); // Looking for DESC on data_interacao
+            const submittedSolutionCleaned = solution.toLowerCase()
+                                                    .replace(/\s+/g, ' ')
+                                                    .replace(/;/g, '')
+                                                    .trim();
 
-        // Check if the index covers data_interacao (DESC) and usuario_id in the correct order
-        const idxData = submittedSolutionCleaned.indexOf("data_interacao");
-        const idxUsuario = submittedSolutionCleaned.indexOf("usuario_id");
-        const isOptimalIndexOrder = (idxData !== -1 && idxUsuario !== -1 && idxData < idxUsuario);
+            // --- Validação de Sintaxe SQL Genérica (Nível 1) ---
+            const genericSqlPattern = /^(select|insert|update|delete|create|alter|drop|with|explain|vacuum|analyze|reindex|set|show)\s/i;
+            const hasParen = submittedSolutionCleaned.includes("(") && submittedSolutionCleaned.includes(")");
+            const hasFromOrOn = submittedSolutionCleaned.includes(" from ") || submittedSolutionCleaned.includes(" on ");
+            const hasWhereOrGroup = submittedSolutionCleaned.includes(" where ") || submittedSolutionCleaned.includes(" group by ");
+            const isMeaningfullyLong = submittedSolutionCleaned.length > 5;
 
-        const isSolutionEffective = hasCreateIndex && hasDataInteracao && hasUsuarioId && hasDescOrder && isOptimalIndexOrder;
+            const isLikelyValidSql = genericSqlPattern.test(submittedSolutionCleaned) ||
+                                     (isMeaningfullyLong && (hasParen || hasFromOrOn || hasWhereOrGroup || submittedSolutionCleaned.includes("=")));
 
-        if (isSolutionEffective) {
-            isSuccess = true;
-            const optimizedExplain = `
+            if (!isLikelyValidSql) {
+                feedbackHtml = `
+                    <h3>🚫 ERRO: Sintaxe SQL Inválida!</h3>
+                    <p>Sua submissão não parece ser uma instrução SQL válida.</p>
+                    <p>Por favor, verifique a sintaxe geral do seu comando SQL. Exemplo: <code>CREATE INDEX...</code>, <code>SELECT...</code>, <code>ALTER TABLE...</code>.</p>
+                    <p>O comando submetido foi: <pre><code>${solution}</code></pre></p>
+                `;
+                feedbackDiv.className = 'feedback failure';
+                feedbackDiv.innerHTML = feedbackHtml;
+                feedbackDiv.style.display = 'block';
+                feedbackDiv.scrollIntoView({ behavior: 'smooth' });
+                return;
+            }
+
+            // --- Validação do Tipo de Comando Esperado para a Solução (Nível 2) ---
+            const isCreateIndexCommand = submittedSolutionCleaned.startsWith("create index");
+            const isSelectCommand = submittedSolutionCleaned.startsWith("select");
+            const isMaterializedViewCommand = submittedSolutionCleaned.includes("create materialized view");
+
+
+            if (!isCreateIndexCommand && !isSelectCommand && !isMaterializedViewCommand) {
+                 feedbackHtml = `
+                    <h3>🤔 Comando Válido, Mas Inesperado para Este Desafio!</h3>
+                    <p>Sua submissão é uma instrução SQL válida, mas **não é o tipo de comando esperado para otimizar este problema de performance**.</p>
+                    <p>Para este desafio, esperamos uma instrução para <strong>criar um índice</strong> ou uma <strong>query otimizada (SELECT)</strong> que aborde o COUNT(DISTINCT) de forma diferente (ex: com funções aproximadas ou via materialized view).</p>
+                    <p>O comando submetido foi: <pre><code>${solution}</code></pre></p>
+                `;
+                feedbackDiv.className = 'feedback failure';
+                feedbackDiv.innerHTML = feedbackHtml;
+                feedbackDiv.style.display = 'block';
+                feedbackDiv.scrollIntoView({ behavior: 'smooth' });
+                return;
+            }
+
+            // --- Validação da Eficácia da Solução (Nível 3: Lógica específica do desafio) ---
+            // Acceptable solutions:
+            // 1. CREATE INDEX idx_interacoes_data_usuario ON interacoes_usuario (data_interacao DESC, usuario_id);
+            // 2. Query change (less likely to be the primary solution for COUNT(DISTINCT) but possible if using extensions)
+            // 3. Materialized View (pre-aggregation)
+            // 4. Approximate counting (e.g., pg_hll extension)
+
+            const targetsInteracoesTable = submittedSolutionCleaned.includes("on interacoes_usuario") || submittedSolutionCleaned.includes("from interacoes_usuario");
+
+            // --- Scenario 1: Optimized Index (most common primary solution for this problem) ---
+            const hasDataInteracaoInIndex = submittedSolutionCleaned.includes("data_interacao");
+            const hasUsuarioIdInIndex = submittedSolutionCleaned.includes("usuario_id");
+            const hasDescInIndex = submittedSolutionCleaned.includes("desc");
+
+            // Check for order of columns within the parentheses
+            const columnsPartMatch = submittedSolutionCleaned.match(/\(([^)]+)\)/); // Extract content inside parentheses
+            let isIndexOrderCorrect = false;
+            if (columnsPartMatch && columnsPartMatch[1]) {
+                const columnListInIndex = columnsPartMatch[1].toLowerCase(); // Use lower case for internal matching
+                const idxData = columnListInIndex.indexOf('data_interacao');
+                const idxUsuario = columnListInIndex.indexOf('usuario_id');
+                const idxDesc = columnListInIndex.indexOf('desc');
+
+                // Check if data_interacao is before usuario_id AND 'desc' is relatively near data_interacao
+                // This is a simplified check for column order and DESC
+                isIndexOrderCorrect = (idxData !== -1 && idxUsuario !== -1 && idxData < idxUsuario);
+                // Also ensure 'desc' is present and logically associated with data_interacao if found.
+                if (hasDescInIndex) { // Only check association if 'desc' is actually in the solution
+                     if (!(idxDesc > idxData && (idxDesc < idxUsuario || !columnListInIndex.substring(idxData, idxUsuario).includes('desc')))) {
+                         isIndexOrderCorrect = false; // 'desc' is present but not correctly placed relative to data_interacao and usuario_id
+                     }
+                } else if (submittedSolutionCleaned.includes("order by") && submittedSolutionCleaned.includes("desc") && submittedSolutionCleaned.includes("data_interacao") && !hasDescInIndex) {
+                    // Edge case: if DESC is in the ORDER BY of the *query*, but not in the index.
+                    // This index (data_interacao, usuario_id) would still be very good.
+                    // For simplicity, let's assume if 'desc' is in solution, it's for the index.
+                }
+            }
+
+            const isOptimalIndexSolution = isCreateIndexCommand && targetsInteracoesTable && hasDataInteracaoInIndex && hasUsuarioIdInIndex && isIndexOrderCorrect && hasDescInIndex;
+
+
+            // --- Scenario 2: Materialized View ---
+            const isMaterializedViewSolution = isMaterializedViewCommand && targetsInteracoesTable && submittedSolutionCleaned.includes("date(data_interacao)") && submittedSolutionCleaned.includes("count(distinct usuario_id)");
+
+            // --- Scenario 3: Approximate Count (requires mentioning pg_hll/hyperloglog) ---
+            const isApproxCountSolution = isSelectCommand && targetsInteracoesTable &&
+                                        (submittedSolutionCleaned.includes("approx_count_distinct") || submittedSolutionCleaned.includes("hyperloglog") || submittedSolutionCleaned.includes("pg_hll")) &&
+                                        submittedSolutionCleaned.includes("usuario_id");
+
+
+            if (isOptimalIndexSolution || isMaterializedViewSolution || isApproxCountSolution) {
+                isSuccess = true;
+                let solutionDetails = '';
+                let finalOptimizedExplain = '';
+
+                if (isOptimalIndexSolution) {
+                    finalOptimizedExplain = `
                                         QUERY PLAN
 --------------------------------------------------------------------------------------------------
 GroupAggregate  (cost=0.43..100.50 rows=90 width=12) (actual time=0.800..2.500 rows=90 loops=1)
@@ -300,54 +398,87 @@ Group Key: (date(data_interacao))
 ->  Index Scan Backward using idx_interacoes_data_usuario on interacoes_usuario  (cost=0.43..80.50 rows=9500000 width=16) (actual time=0.050..1.500 rows=9500000 loops=1)
      Index Cond: (data_interacao >= (now() - '90 days'::interval))
 (4 rows)
-            `;
-            const optimizedPlanDescription = `Você identificou e resolveu o gargalo da agregação e ordenação! O <code>EXPLAIN ANALYZE</code> original mostrava um caro <code>Sort Method: external merge Disk</code> e um grande <code>Bitmap Heap Scan</code>.
+                    `;
+                    solutionDetails = `Você identificou e resolveu o gargalo da agregação e ordenação! O <code>EXPLAIN ANALYZE</code> original mostrava um caro <code>Sort Method: external merge Disk</code> e um grande <code>Bitmap Heap Scan</code>.
 
 Sua solução de criar um **índice composto** como <code>(data_interacao DESC, usuario_id)</code> é altamente eficaz para esta query:
 <ul>
 <li>O **<code>Index Scan Backward</code>** no novo índice otimiza drasticamente a leitura dos dados para o período de 90 dias.</li>
-<li>A inclusão de <code>data_interacao DESC</code> no índice **elimina a necessidade da operação de `Sort` em disco** para o `GROUP BY` e `ORDER BY`, pois os dados já são lidos na ordem desejada. Isso é um ganho de performance massivo.</li>
-<li>Embora o `COUNT(DISTINCT)` ainda exija processamento, ele agora opera sobre um conjunto de dados já pré-ordenado e eficientemente lido, reduzindo o custo total.</li>
+<li>A inclusão de <code>data_interacao DESC</code> no índice **elimina a necessidade da operação de \`Sort\` em disco** para o \`GROUP BY\` e \`ORDER BY\`, pois os dados já são lidos na ordem desejada. Isso é um ganho de performance massivo.</li>
+<li>Embora o \`COUNT(DISTINCT)\` ainda exija processamento, ele agora opera sobre um conjunto de dados já pré-ordenado e eficientemente lido, reduzindo o custo total.</li>
 </ul>
 Esta otimização transforma uma query que antes "estourava" para o disco em uma operação muito mais leve e rápida, mostrando um excelente entendimento do impacto da ordenação em agregações.`;
+                } else if (isMaterializedViewSolution) {
+                    finalOptimizedExplain = `
+                                        QUERY PLAN
+--------------------------------------------------------------------------------------------------
+Custom Scan on "mv_usuarios_unicos_diarios"  (cost=0.00..0.00 rows=90 width=12)
+->  Materialized View Scan on mv_usuarios_unicos_diarios  (cost=0.00..0.00 rows=90 width=12)
+(2 rows)
+                    `;
+                    solutionDetails = `Excelente! Você propôs uma solução avançada com uma **Materialized View**. Isso é uma forma poderosa de otimização para relatórios que são consultados frequentemente.
 
-            feedbackHtml = `
-                <h3>🎉 SUCESSO! 🎉</h3>
-                <p><strong>Análise da Sua Solução:</strong></p>
-                <p class="metric"><strong>Tempo de Execução Estimado (APÓS SUA OTIMIZAÇÃO):</strong> <span class="highlight">2.5 segundos</span> (redução de 98.3%)</p>
-                <p class="metric"><strong>Recursos Consumidos (I/O Disk):</strong> <span class="highlight">1 GB lidos</span> (redução de 98.75%)</p>
-                <p class="metric"><strong>Uso de Memória:</strong> <span class="highlight">Moderado (redução significativa)</span></p>
+Ao criar uma Materialized View que pré-agrega a contagem de usuários únicos por dia, a query de relatório se torna extremamente rápida, pois ela consulta os dados já processados na view, e não a tabela base gigante. O custo de computação é transferido para o momento da atualização da Materialized View (REFRESH MATERIALIZED VIEW).
 
-                <details open>
-                    <summary>Visualizar Saída do EXPLAIN ANALYZE (APÓS SUA OTIMIZAÇÃO - Simulada)</summary>
-                    <div>
-                        <pre><code>${optimizedExplain}</code></pre>
-                    </div>
-                </details>
+Esta é uma solução de alto nível, ideal para dashboards e relatórios de BI onde a atualização não precisa ser em tempo real imediato.`;
+                } else if (isApproxCountSolution) {
+                    finalOptimizedExplain = `
+                                        QUERY PLAN
+--------------------------------------------------------------------------------------------------
+GroupAggregate  (cost=0.43..50.50 rows=90 width=12) (actual time=0.050..0.800 rows=90 loops=1)
+Group Key: (date(data_interacao))
+->  Index Scan Backward using idx_interacoes_data_interacao on interacoes_usuario  (cost=0.43..40.50 rows=9500000 width=16) (actual time=0.020..0.500 rows=9500000 loops=1)
+     Index Cond: (data_interacao >= (now() - '90 days'::interval))
+(4 rows)
+                    `;
+                    solutionDetails = `Brilhante! Você identificou que, para grandes volumes de dados e quando a precisão exata não é 100% crítica, usar **funções de contagem distintas aproximada** é uma otimização fantástica no PostgreSQL (via extensões como pg_hll).
 
-                <details open>
-                    <summary>Visualizar Descrição do Plano (Interpretação do EXPLAIN ANALYZE)</summary>
-                    <div>
-                        <p>${optimizedPlanDescription}</p>
-                    </div>
-                </details>
+Ao invés de \`COUNT(DISTINCT)\`, usar funções como \`HLL_COUNT_DISTINCT()\` (se \`pg_hll\` estiver instalada) ou similar, reduz drasticamente o uso de memória e CPU para a agregação, resultando em tempos de execução muito mais rápidos com um pequeno e controlável erro de precisão.
 
-                <p><strong>Parabéns!</strong> Você dominou o desafio de otimização de agregações no PostgreSQL!</p>
-            `;
-            feedbackDiv.className = 'feedback success';
-        } else {
-            feedbackHtml = `
-                <h3>😔 Tente Novamente! 😔</h3>
-                <p>Sua solução ainda não atingiu o nível de otimização esperado ou não está no formato correto para este desafio.</p>
-                <p>Revise a saída do <code>EXPLAIN ANALYZE</code> original. O principal indicador de problema é o <strong><code>Sort Method: external merge Disk</code></strong> e o grande volume de dados no <code>Bitmap Heap Scan</code> antes do agrupamento. A agregação <code>COUNT(DISTINCT)</code> é naturalmente pesada.</p>
-                <p>Pense em como você pode ajudar o PostgreSQL a ler os dados de forma mais eficiente e, crucialmente, como evitar que a ordenação para o agrupamento precise usar o disco.</p>
-            `;
-            feedbackDiv.className = 'feedback failure';
-        }
+Esta é uma solução avançada e muito prática para cenários de análise e Big Data.`;
+                }
 
-        feedbackDiv.innerHTML = feedbackHtml;
-        feedbackDiv.style.display = 'block';
-        feedbackDiv.scrollIntoView({ behavior: 'smooth' });
+
+                feedbackHtml = `
+                    <h3>🎉 SUCESSO! 🎉</h3>
+                    <p><strong>Análise da Sua Solução:</strong></p>
+                    <p class="metric"><strong>Tempo de Execução Estimado (APÓS SUA OTIMIZAÇÃO):</strong> <span class="highlight">~2-5 segundos (dependendo da solução)</span> (redução de 96-98%)</p>
+                    <p class="metric"><strong>Recursos Consumidos (I/O Disk):</strong> <span class="highlight">Redução significativa</span></p>
+                    <p class="metric"><strong>Uso de Memória:</strong> <span class="highlight">Baixo / Moderado</span></p>
+
+                    <details open>
+                        <summary>Visualizar Saída do EXPLAIN ANALYZE (APÓS SUA OTIMIZAÇÃO - Simulada)</summary>
+                        <div>
+                            <pre><code>${finalOptimizedExplain}</code></pre>
+                        </div>
+                    </details>
+
+                    <details open>
+                        <summary>Visualizar Descrição do Plano (Interpretação do EXPLAIN ANALYZE)</summary>
+                        <div>
+                            <p>${solutionDetails}</p>
+                        </div>
+                    </details>
+
+                    <p><strong>Parabéns!</strong> Você dominou este desafio de otimização de agregações no PostgreSQL!</p>
+                `;
+                feedbackDiv.className = 'feedback success';
+            } else {
+                // Command is of the right type, but not the complete/optimal solution
+                feedbackHtml = `
+                    <h3>😔 Comando Incorreto para Otimização! 😔</h3>
+                    <p>Sua solução é uma instrução SQL válida, mas **não abordou o problema de performance de forma eficaz** ou não seguiu a estratégia ideal para este desafio.</p>
+                    <p>Revise a saída do <code>EXPLAIN ANALYZE</code> original. O principal indicador de problema é o <strong><code>Sort Method: external merge Disk</code></strong> e o grande volume de dados no <code>Bitmap Heap Scan</code> antes do agrupamento. A agregação <code>COUNT(DISTINCT)</code> é naturalmente pesada.</p>
+                    <p>Dica: Pense em como você pode ajudar o PostgreSQL a ler os dados de forma mais eficiente e, crucialmente, como evitar que a ordenação para o agrupamento precise usar o disco. Considere também alternativas para contagens distintas exatas em volumes massivos.</p>
+                    <p>O comando submetido foi: <pre><code>${solution}</code></pre></p>
+                `;
+                feedbackDiv.className = 'feedback failure';
+            }
+
+            feedbackDiv.innerHTML = feedbackHtml;
+            feedbackDiv.style.display = 'block';
+            feedbackDiv.scrollIntoView({ behavior: 'smooth' });
+        });
     });
 </script>
 </body>
